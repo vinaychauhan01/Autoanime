@@ -12,4 +12,6 @@ COPY --from=mwader/static-ffmpeg:6.1 /ffprobe /bin/ffprobe
 COPY . .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
+RUN pip install "lxml[html_clean]"
+
 CMD ["bash","run.sh"]
