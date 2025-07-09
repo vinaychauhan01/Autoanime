@@ -208,7 +208,7 @@ class TextEditor:
     async def get_id(self):
         if (ani_id := self.adata.get('id')) and str(ani_id).isdigit():
             return ani_id
-            
+
     @handle_logs
     async def parse_name(self, no_s=False, no_y=False):
         anime_name = self.pdata.get("anime_title")
@@ -222,43 +222,44 @@ class TextEditor:
                 pname += f" {anime_year}"
             return pname
         return anime_name
-        
+
     @handle_logs
     async def get_poster(self):
         if anime_id := await self.get_id():
             return f"https://img.anili.st/media/{anime_id}"
         return "https://telegra.ph/file/112ec08e59e73b6189a20.jpg"
-        
+
     @handle_logs
-async def get_upname(self, qual=""):
-    anime_name = self.pdata.get("anime_title")
-    codec = 'HEVC' if 'libx265' in ffargs[qual] else 'AV1' if 'libaom-av1' in ffargs[qual] else ''
-    lang = 'Multi-Audio' if 'multi-audio' in self.__name.lower() else 'Sub'
-    anime_season = str(ani_s[-1]) if (ani_s := self.pdata.get('anime_season', '01')) and isinstance(ani_s, list) else str(ani_s)
-    if anime_name and self.pdata.get("episode_number"):
-        titles = self.adata.get('title', {})
+    async def get_upname(self, qual=""):
+        anime_name = self.pdata.get("anime_title")
+        codec = 'HEVC' if 'libx265' in ffargs.get(qual, '') else 'AV1' if 'libaom-av1' in ffargs.get(qual, '') else ''
+        lang = 'Multi-Audio' if 'multi-audio' in self.__name.lower() else 'Sub'
+        ani_s = self.pdata.get('anime_season', '01')
+        anime_season = str(ani_s[-1]) if isinstance(ani_s, list) else str(ani_s)
+        if anime_name and self.pdata.get("episode_number"):
+            titles = self.adata.get('title', {})
+            title = titles.get('english') or titles.get('romaji') or titles.get('native') or "Unknown Title"
+            return f"""[S{anime_season}-{'E'+str(self.pdata.get('episode_number')) if self.pdata.get('episode_number') else ''}] {title} {'['+qual+'p]' if qual else ''} {'['+codec.upper()+'] ' if codec else ''}[{lang}] {Var.BRAND_UNAME}.mkv"""
+
+    @handle_logs
+    async def get_caption(self):
+        sd = self.adata.get('startDate', {})
+        startdate = f"{month_name[sd['month']]} {sd['day']}, {sd['year']}" if sd.get('day') and sd.get('year') else ""
+        ed = self.adata.get('endDate', {})
+        enddate = f"{month_name[ed['month']]} {ed['day']}, {ed['year']}" if ed.get('day') and ed.get('year') else ""
+        titles = self.adata.get("title", {})
         title = titles.get('english') or titles.get('romaji') or titles.get('native') or "Unknown Title"
-        return f"""[S{anime_season}-{'E'+str(self.pdata.get('episode_number')) if self.pdata.get('episode_number') else ''}] {title} {'['+qual+'p]' if qual else ''} {'['+codec.upper()+'] ' if codec else ''}{'['+lang+']'} {Var.BRAND_UNAME}.mkv"""
 
-@handle_logs
-async def get_caption(self):
-    sd = self.adata.get('startDate', {})
-    startdate = f"{month_name[sd['month']]} {sd['day']}, {sd['year']}" if sd.get('day') and sd.get('year') else ""
-    ed = self.adata.get('endDate', {})
-    enddate = f"{month_name[ed['month']]} {ed['day']}, {ed['year']}" if ed.get('day') and ed.get('year') else ""
-    titles = self.adata.get("title", {})
-    title = titles.get('english') or titles.get('romaji') or titles.get('native') or "Unknown Title"
-
-    return CAPTION_FORMAT.format(
-        title=title,
-        form=self.adata.get("format") or "N/A",
-        genres=", ".join(f"{GENRES_EMOJI[x]} #{x.replace(' ', '_').replace('-', '_')}" for x in (self.adata.get('genres') or [])),
-        avg_score=f"{sc}%" if (sc := self.adata.get('averageScore')) else "N/A",
-        status=self.adata.get("status") or "N/A",
-        start_date=startdate or "N/A",
-        end_date=enddate or "N/A",
-        t_eps=self.adata.get("episodes") or "N/A",
-        plot=(desc if (desc := self.adata.get("description") or "N/A") and len(desc) < 200 else desc[:200] + "..."),
-        ep_no=self.pdata.get("episode_number"),
-        cred=Var.BRAND_UNAME,
-    )
+        return CAPTION_FORMAT.format(
+            title=title,
+            form=self.adata.get("format") or "N/A",
+            genres=", ".join(f"{GENRES_EMOJI[x]} #{x.replace(' ', '_').replace('-', '_')}" for x in (self.adata.get('genres') or [])),
+            avg_score=f"{sc}%" if (sc := self.adata.get('averageScore')) else "N/A",
+            status=self.adata.get("status") or "N/A",
+            start_date=startdate or "N/A",
+            end_date=enddate or "N/A",
+            t_eps=self.adata.get("episodes") or "N/A",
+            plot=(desc if (desc := self.adata.get("description") or "N/A") and len(desc) < 200 else desc[:200] + "..."),
+            ep_no=self.pdata.get("episode_number"),
+            cred=Var.BRAND_UNAME,
+        )
