@@ -44,17 +44,76 @@ query ($id: Int, $search: String, $seasonYear: Int) {
       english
       native
     }
+    type
     format
     status(version: 2)
     description(asHtml: false)
-    startDate { year month day }
-    endDate { year month day }
+    startDate {
+      year
+      month
+      day
+    }
+    endDate {
+      year
+      month
+      day
+    }
+    season
+    seasonYear
     episodes
+    duration
+    chapters
+    volumes
+    countryOfOrigin
+    source
+    hashtag
+    trailer {
+      id
+      site
+      thumbnail
+    }
+    updatedAt
+    coverImage {
+      large
+    }
+    bannerImage
     genres
+    synonyms
     averageScore
+    meanScore
+    popularity
+    trending
+    favourites
+    studios {
+      nodes {
+         name
+         siteUrl
+      }
+    }
+    isAdult
+    nextAiringEpisode {
+      airingAt
+      timeUntilAiring
+      episode
+    }
+    airingSchedule {
+      edges {
+        node {
+          airingAt
+          timeUntilAiring
+          episode
+        }
+      }
+    }
+    externalLinks {
+      url
+      site
+    }
+    siteUrl
   }
 }
 """
+
 
 class AniLister:
     def __init__(self, anime_name: str, year: int) -> None:
