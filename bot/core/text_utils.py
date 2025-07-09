@@ -185,7 +185,7 @@ class TextEditor:
     async def get_caption(self):
         sd = self.adata.get('startDate', {})
         ed = self.adata.get('endDate', {})
-        startdate = f"{month_name.get(sd.get('month', 1), '')} {sd.get('day', '')}, {sd.get('year', '')}"
+        startdate = f"{month_name[sd['month']]} {sd['day']}, {sd['year']}" if sd.get('day') and sd.get('year') and sd.get('month') else ""
         enddate = f"{month_name.get(ed.get('month', 1), '')} {ed.get('day', '')}, {ed.get('year', '')}"
         titles = self.adata.get("title", {})
 
