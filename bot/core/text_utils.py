@@ -14,7 +14,7 @@ CAPTION_FORMAT = """
 <b>㊂ <i>{title}</i></b>
 <b>╭┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅</b>
 <b>⊙</b> <i>Genres:</i> <i>{genres}</i>
-<b>⊙</b> <i>Status:</i> <i>{status}</i> 
+<b>⊙</b> <i>Status:</i> <i>RELEASING</i>  
 <b>⊙</b> <i>Source:</i> <i>Subsplease</i>
 <b>⊙</b> <i>Episode:</i> <i>{ep_no}</i>
 <b>⊙</b> <i>Audio: Japanese</i>
