@@ -87,6 +87,11 @@ async def get_animes(name, torrent, force=False):
 
                 for qual in Var.QUALS:
                     filename = await aniInfo.get_upname(qual)
+
+                    if not filename:
+                        await rep.report(f"[ERROR] Filename returned None for `{name}` ({qual}) - skipping encode", "error")
+                        continue
+
                     await editMessage(stat_msg, f"‣ <b>Anime Name :</b> <b><i>{name}</i></b>\n\n<i>Ready to Encode...</i>")
                     await asleep(1.5)
                     await rep.report("Starting Encode...", "info")
@@ -133,5 +138,3 @@ async def extra_utils(msg_id, out_path):
     if Var.BACKUP_CHANNEL != 0:
         for chat_id in Var.BACKUP_CHANNEL.split():
             await msg.copy(int(chat_id))
-
-
