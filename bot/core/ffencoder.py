@@ -12,7 +12,6 @@ from bot import Var, bot_loop, ffpids_cache, LOGS
 from .func_utils import mediainfo, convertBytes, convertTime, sendMessage, editMessage
 from .reporter import rep
 
-
 ffargs = {
     '1080': Var.FFCODE_1080,
     '720': Var.FFCODE_720,
@@ -20,17 +19,16 @@ ffargs = {
     '360': Var.FFCODE_360,
 }
 
-
 class FFEncoder:
     def __init__(self, message, path, name, qual):
         self.__proc = None
         self.is_cancelled = False
         self.message = message
-        self.__name = name
+        self.__name = name or "unknown"  # Fallback if name is None
         self.__qual = qual
         self.dl_path = path
         self.__total_time = None
-        self.out_path = ospath.join("encode", name)
+        self.out_path = ospath.join("encode", self.__name) if self.__name else None
         self.__prog_file = 'prog.txt'
         self.__start_time = time()
 
@@ -73,6 +71,10 @@ class FFEncoder:
 
     async def start_encode(self):
         try:
+            if not self.out_path:
+                await rep.report("[FFEncoder] Output path is None. Skipping encode.", "error")
+                return ""
+
             if ospath.exists(self.__prog_file):
                 await aioremove(self.__prog_file)
 
