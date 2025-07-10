@@ -265,10 +265,17 @@ class TextEditor:
         return anime_name
         
     @handle_logs
-    async def get_poster(self):
-        if anime_id := await self.get_id():
-            return f"https://img.anili.st/media/{anime_id}"
-        return "https://telegra.ph/file/112ec08e59e73b6189a20.jpg"
+async def get_poster(self):
+    if anime_id := await self.get_id():
+        return f"https://img.anili.st/media/{anime_id}"
+
+    # AniList failed — try Kitsu fallback
+    kitsu_data = await self.get_kitsu_data()
+    if kitsu_data and (poster := kitsu_data.get("coverImage", {}).get("large")):
+        return poster
+
+    # Final fallback
+    return "https://telegra.ph/file/112ec08e59e73b6189a20.jpg"
         
     @handle_logs
     async def get_upname(self, qual=""):
