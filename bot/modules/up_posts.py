@@ -1,8 +1,8 @@
-from json import loads as jloads
-from os import path as ospath, execl
+from os import execl, path as ospath
 from sys import executable
-
+from json import loads as jloads
 from aiohttp import ClientSession
+
 from bot import Var, bot, ffQueue
 from bot.core.text_utils import TextEditor
 from bot.core.reporter import rep
