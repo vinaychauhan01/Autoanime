@@ -35,81 +35,81 @@ GENRES_EMOJI = {
 
 ANIME_GRAPHQL_QUERY = """
 query ($id: Int, $search: String, $seasonYear: Int) {
-  Media(id: $id, type: ANIME, format_not_in: [MOVIE, MUSIC, MANGA, NOVEL, ONE_SHOT], search: $search, seasonYear: $seasonYear) {
-    id
-    idMal
-    title {
-      romaji
-      english
-      native
-    }
-    type
-    format
-    status(version: 2)
-    description(asHtml: false)
-    startDate {
-      year
-      month
-      day
-    }
-    endDate {
-      year
-      month
-      day
-    }
-    season
-    seasonYear
-    episodes
-    duration
-    chapters
-    volumes
-    countryOfOrigin
-    source
-    hashtag
-    trailer {
-      id
-      site
-      thumbnail
-    }
-    updatedAt
-    coverImage {
-      large
-    }
-    bannerImage
-    genres
-    synonyms
-    averageScore
-    meanScore
-    popularity
-    trending
-    favourites
-    studios {
-      nodes {
-         name
-         siteUrl
-      }
-    }
-    isAdult
-    nextAiringEpisode {
-      airingAt
-      timeUntilAiring
-      episode
-    }
-    airingSchedule {
-      edges {
-        node {
-          airingAt
-          timeUntilAiring
-          episode
+    Media(id: $id, type: ANIME, format_not_in: [MOVIE, MUSIC, MANGA, NOVEL, ONE_SHOT], search: $search, seasonYear: $seasonYear) {
+        id
+        idMal
+        title {
+            romaji
+            english
+            native
         }
-      }
+        type
+        format
+        status(version: 2)
+        description(asHtml: false)
+        startDate {
+            year
+            month
+            day
+        }
+        endDate {
+            year
+            month
+            day
+        }
+        season
+        seasonYear
+        episodes
+        duration
+        chapters
+        volumes
+        countryOfOrigin
+        source
+        hashtag
+        trailer {
+            id
+            site
+            thumbnail
+        }
+        updatedAt
+        coverImage {
+            large
+        }
+        bannerImage
+        genres
+        synonyms
+        averageScore
+        meanScore
+        popularity
+        trending
+        favourites
+        studios {
+            nodes {
+                name
+                siteUrl
+            }
+        }
+        isAdult
+        nextAiringEpisode {
+            airingAt
+            timeUntilAiring
+            episode
+        }
+        airingSchedule {
+            edges {
+                node {
+                    airingAt
+                    timeUntilAiring
+                    episode
+                }
+            }
+        }
+        externalLinks {
+            url
+            site
+        }
+        siteUrl
     }
-    externalLinks {
-      url
-      site
-    }
-    siteUrl
-  }
 }
 """
 
@@ -327,7 +327,7 @@ class TextEditor:
             return poster
 
         # Fallback image
-        return "https://telegra.ph/file/112ec08e59e73b6189a20.jpg""
+        return "https://telegra.ph/file/112ec08e59e73b6189a20.jpg"
 
     @handle_logs
     async def get_upname(self, qual=""):
@@ -363,4 +363,3 @@ class TextEditor:
             ep_no=self.pdata.get("episode_number"),
             cred=Var.BRAND_UNAME,
         )
-
