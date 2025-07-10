@@ -1,10 +1,8 @@
-
-    
 from calendar import month_name
 from datetime import datetime
 from random import choice
 from asyncio import sleep as asleep
-from aiohttp import ClientSession
+from aiohttp import ClientSession, ClientError, ContentTypeError
 from anitopy import parse
 
 from bot import Var, bot
@@ -27,7 +25,13 @@ CAPTION_FORMAT = """
 ╰┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅
 """
 
-GENRES_EMOJI = {"Action": "👊", "Adventure": choice(['🪂', '🧗‍♀']), "Comedy": "🤣", "Drama": " 🎭", "Ecchi": choice(['💋', '🥵']), "Fantasy": choice(['🧞', '🧞‍♂', '🧞‍♀','🌗']), "Hentai": "🔞", "Horror": "☠", "Mahou Shoujo": "☯", "Mecha": "🤖", "Music": "🎸", "Mystery": "🔮", "Psychological": "♟", "Romance": "💞", "Sci-Fi": "🛸", "Slice of Life": choice(['☘','🍁']), "Sports": "⚽️", "Supernatural": "🫧", "Thriller": choice(['🥶', '🔪','🤯'])}
+GENRES_EMOJI = {
+    "Action": "👊", "Adventure": choice(['🪂', '🧗‍♀']), "Comedy": "🤣",
+    "Drama": " 🎭", "Ecchi": choice(['💋', '🥵']), "Fantasy": choice(['🧞', '🧞‍♂', '🧞‍♀', '🌗']),
+    "Hentai": "🔞", "Horror": "☠", "Mahou Shoujo": "☯", "Mecha": "🤖", "Music": "🎸",
+    "Mystery": "🔮", "Psychological": "♟", "Romance": "💞", "Sci-Fi": "🛸",
+    "Slice of Life": choice(['☘', '🍁']), "Sports": "⚽️", "Supernatural": "🫧", "Thriller": choice(['🥶', '🔪', '🤯'])
+}
 
 ANIME_GRAPHQL_QUERY = """
 query ($id: Int, $search: String, $seasonYear: Int) {
@@ -114,15 +118,15 @@ class AniLister:
         self.__api = "https://graphql.anilist.co"
         self.__ani_name = anime_name
         self.__ani_year = year
-        self.__vars = {'search' : self.__ani_name, 'seasonYear': self.__ani_year}
-    
+        self.__vars = {'search': self.__ani_name, 'seasonYear': self.__ani_year}
+
     def __update_vars(self, year=True) -> None:
         if year:
             self.__ani_year -= 1
             self.__vars['seasonYear'] = self.__ani_year
         else:
-            self.__vars = {'search' : self.__ani_name}
-    
+            self.__vars = {'search': self.__ani_name}
+
     async def post_data(self):
         try:
             async with ClientSession() as sess:
@@ -146,73 +150,68 @@ class AniLister:
         except ContentTypeError as e:
             await rep.report(f"AniList JSON decode failed: {e}", "error")
             return (500, None, None)
-
         except ClientError as e:
             await rep.report(f"AniList client error: {e}", "error")
             return (503, None, None)
-
         except Exception as e:
             await rep.report(f"Unexpected AniList error: {e}", "error")
             return (500, None, None)
+
+    @handle_logs
     async def get_kitsu_data(self):
-kitsu_api = f"https://kitsu.io/api/edge/anime?filter[text]={self.__ani_name}"
-try:
-async with ClientSession() as sess:
-async with sess.get(kitsu_api, timeout=10) as resp:
-if resp.status != 200:
-return {}
+        kitsu_api = f"https://kitsu.io/api/edge/anime?filter[text]={self.__ani_name}"
+        try:
+            async with ClientSession() as sess:
+                async with sess.get(kitsu_api, timeout=10) as resp:
+                    if resp.status != 200:
+                        return {}
 
-data = await resp.json()  
-                if not data.get("data"):  
-                    return {}  
+                    data = await resp.json()
+                    if not data.get("data"):
+                        return {}
 
-                anime = data["data"][0]["attributes"]  
-                # Parse start date safely  
-                start_year, start_month, start_day = None, None, None  
-                if anime.get("startDate"):  
-                    try:  
-                        start_year, start_month, start_day = map(int, anime["startDate"].split("-"))  
-                    except:  
-                        pass  
+                    anime = data["data"][0]["attributes"]
+                    start_year, start_month, start_day = None, None, None
+                    if anime.get("startDate"):
+                        try:
+                            start_year, start_month, start_day = map(int, anime["startDate"].split("-"))
+                        except:
+                            pass
 
-                return {  
-                    "title": {  
-                        "romaji": anime.get("canonicalTitle"),  
-                        "english": anime.get("titles", {}).get("en"),  
-                        "native": anime.get("titles", {}).get("ja_jp")  
-                    },  
-                    "genres": anime.get("genres") or [],  
-                    "startDate": {  
-                        "year": start_year,  
-                        "month": start_month,  
-                        "day": start_day  
-                    },  
-                    "episodes": anime.get("episodeCount"),  
-                    "status": anime.get("status") or "N/A",  
-                    "description": anime.get("synopsis"),  
-                    "coverImage": {  
-                        "large": anime.get("posterImage", {}).get("original")  
-                    }  
-                }  
-    except Exception as e:  
-        await rep.report(f"Kitsu Fallback Error: {e}", "error")  
-        return {}
+                    return {
+                        "title": {
+                            "romaji": anime.get("canonicalTitle"),
+                            "english": anime.get("titles", {}).get("en"),
+                            "native": anime.get("titles", {}).get("ja_jp")
+                        },
+                        "genres": anime.get("genres") or [],
+                        "startDate": {
+                            "year": start_year,
+                            "month": start_month,
+                            "day": start_day
+                        },
+                        "episodes": anime.get("episodeCount"),
+                        "status": anime.get("status") or "N/A",
+                        "description": anime.get("synopsis"),
+                        "coverImage": {
+                            "large": anime.get("posterImage", {}).get("original")
+                        }
+                    }
+        except Exception as e:
+            await rep.report(f"Kitsu Fallback Error: {e}", "error")
+            return {}
 
-Is i need to add @handle_logs ?
-
-
-        
     async def get_anidata(self):
         res_code, resp_json, res_heads = await self.post_data()
         while res_code == 404 and self.__ani_year > 2020:
             self.__update_vars()
             await rep.report(f"AniList Query Name: {self.__ani_name}, Retrying with {self.__ani_year}", "warning", log=False)
             res_code, resp_json, res_heads = await self.post_data()
-        
+
         if res_code == 404:
             self.__update_vars(year=False)
             res_code, resp_json, res_heads = await self.post_data()
-        
+
         if res_code == 200:
             return resp_json.get('data', {}).get('Media', {}) or {}
         elif res_code == 429:
@@ -227,7 +226,7 @@ Is i need to add @handle_logs ?
         else:
             await rep.report(f"AniList API Error: {res_code}, trying Kitsu fallback...", "warning", log=False)
             return await self.get_kitsu_data()
-    
+
 class TextEditor:
     def __init__(self, name):
         self.__name = name
@@ -249,7 +248,7 @@ class TextEditor:
     async def get_id(self):
         if (ani_id := self.adata.get('id')) and str(ani_id).isdigit():
             return ani_id
-            
+
     @handle_logs
     async def parse_name(self, no_s=False, no_y=False):
         anime_name = self.pdata.get("anime_title")
@@ -263,20 +262,18 @@ class TextEditor:
                 pname += f" {anime_year}"
             return pname
         return anime_name
-        
+
     @handle_logs
-async def get_poster(self):
-    if anime_id := await self.get_id():
-        return f"https://img.anili.st/media/{anime_id}"
+    async def get_poster(self):
+        if anime_id := await self.get_id():
+            return f"https://img.anili.st/media/{anime_id}"
 
-    # AniList failed — try Kitsu fallback
-    kitsu_data = await self.get_kitsu_data()
-    if kitsu_data and (poster := kitsu_data.get("coverImage", {}).get("large")):
-        return poster
+        kitsu_data = await AniLister(self.__name, datetime.now().year).get_kitsu_data()
+        if kitsu_data and (poster := kitsu_data.get("coverImage", {}).get("large")):
+            return poster
 
-    # Final fallback
-    return "https://telegra.ph/file/112ec08e59e73b6189a20.jpg"
-        
+        return "https://telegra.ph/file/112ec08e59e73b6189a20.jpg"
+
     @handle_logs
     async def get_upname(self, qual=""):
         anime_name = self.pdata.get("anime_title")
@@ -294,17 +291,17 @@ async def get_poster(self):
         ed = self.adata.get('endDate', {})
         enddate = f"{month_name[ed['month']]} {ed['day']}, {ed['year']}" if ed.get('day') and ed.get('year') else ""
         titles = self.adata.get("title", {})
-        
+
         return CAPTION_FORMAT.format(
-                title=titles.get('english') or titles.get('romaji') or titles.get('native'),
-                form=self.adata.get("format") or "N/A",
-                genres=", ".join(f"{GENRES_EMOJI[x]} #{x.replace(' ', '_').replace('-', '_')}" for x in (self.adata.get('genres') or [])),
-                avg_score=f"{sc}%" if (sc := self.adata.get('averageScore')) else "N/A",
-                status=self.adata.get("status") or "N/A",
-                start_date=startdate or "N/A",
-                end_date=enddate or "N/A",
-                t_eps=self.adata.get("episodes") or "N/A",
-                plot= (desc if (desc := self.adata.get("description") or "N/A") and len(desc) < 200 else desc[:200] + "..."),
-                ep_no=self.pdata.get("episode_number"),
-                cred=Var.BRAND_UNAME,
-            )
+            title=titles.get('english') or titles.get('romaji') or titles.get('native'),
+            form=self.adata.get("format") or "N/A",
+            genres=", ".join(f"{GENRES_EMOJI[x]} #{x.replace(' ', '_').replace('-', '_')}" for x in (self.adata.get('genres') or [])),
+            avg_score=f"{sc}%" if (sc := self.adata.get('averageScore')) else "N/A",
+            status=self.adata.get("status") or "N/A",
+            start_date=startdate or "N/A",
+            end_date=enddate or "N/A",
+            t_eps=self.adata.get("episodes") or "N/A",
+            plot=(desc if (desc := self.adata.get("description") or "N/A") and len(desc) < 200 else desc[:200] + "..."),
+            ep_no=self.pdata.get("episode_number"),
+            cred=Var.BRAND_UNAME,
+        )
