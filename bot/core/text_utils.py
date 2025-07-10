@@ -154,6 +154,53 @@ class AniLister:
         except Exception as e:
             await rep.report(f"Unexpected AniList error: {e}", "error")
             return (500, None, None)
+    async def get_kitsu_data(self):
+kitsu_api = f"https://kitsu.io/api/edge/anime?filter[text]={self.__ani_name}"
+try:
+async with ClientSession() as sess:
+async with sess.get(kitsu_api, timeout=10) as resp:
+if resp.status != 200:
+return {}
+
+data = await resp.json()  
+                if not data.get("data"):  
+                    return {}  
+
+                anime = data["data"][0]["attributes"]  
+                # Parse start date safely  
+                start_year, start_month, start_day = None, None, None  
+                if anime.get("startDate"):  
+                    try:  
+                        start_year, start_month, start_day = map(int, anime["startDate"].split("-"))  
+                    except:  
+                        pass  
+
+                return {  
+                    "title": {  
+                        "romaji": anime.get("canonicalTitle"),  
+                        "english": anime.get("titles", {}).get("en"),  
+                        "native": anime.get("titles", {}).get("ja_jp")  
+                    },  
+                    "genres": anime.get("genres") or [],  
+                    "startDate": {  
+                        "year": start_year,  
+                        "month": start_month,  
+                        "day": start_day  
+                    },  
+                    "episodes": anime.get("episodeCount"),  
+                    "status": anime.get("status") or "N/A",  
+                    "description": anime.get("synopsis"),  
+                    "coverImage": {  
+                        "large": anime.get("posterImage", {}).get("original")  
+                    }  
+                }  
+    except Exception as e:  
+        await rep.report(f"Kitsu Fallback Error: {e}", "error")  
+        return {}
+
+Is i need to add @handle_logs ?
+
+
         
     async def get_anidata(self):
         res_code, resp_json, res_heads = await self.post_data()
