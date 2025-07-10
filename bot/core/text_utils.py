@@ -225,8 +225,8 @@ Is i need to add @handle_logs ?
             await asleep(5)
             return await self.get_anidata()
         else:
-            await rep.report(f"AniList API Error: {res_code}", "error", log=False)
-            return {}
+            await rep.report(f"AniList API Error: {res_code}, trying Kitsu fallback...", "warning", log=False)
+            return await self.get_kitsu_data()
     
 class TextEditor:
     def __init__(self, name):
