@@ -1,17 +1,9 @@
 import asyncio
 import json
-
 import os
 import subprocess
-import math
-import re
 
 from pathlib import Path
-
-import aiofiles
-import aiohttp
-
-OK = {}
 
 
 async def genss(file):
@@ -20,11 +12,18 @@ async def genss(file):
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
     )
-    stdout, stderr = process.communicate()
+    stdout, _ = process.communicate()
     out = stdout.decode().strip()
-    z = json.loads(out)
-    p = z["media"]["track"][0]["Duration"]
-    return int(p.split(".")[-2])
+    data = json.loads(out)
+    duration = data["media"]["track"][0]["Duration"]
+    return int(duration.split(".")[-2])
+
+
+def convertTime(seconds):
+    seconds = int(seconds)
+    minutes, sec = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours:02}:{minutes:02}:{sec:02}"
 
 
 async def duration_s(file):
@@ -32,40 +31,53 @@ async def duration_s(file):
     x = round(tsec / 5)
     y = round(tsec / 5 + 30)
     pin = convertTime(x)
-    if y < tsec:
-        pon = convertTime(y)
-    else:
-        pon = convertTime(tsec)
+    pon = convertTime(y if y < tsec else tsec)
     return pin, pon
 
 
-async def gen_ss_sam(hash, filename, log):
+async def gen_ss_sam(hash_dir, filename, log):
     try:
-        ss_path, sp_path = None, None
-        os.mkdir(hash)
+        if not filename or not os.path.exists(filename):
+            log.error("❌ Input file does not exist.")
+            return "", ""
+
+        os.makedirs(hash_dir, exist_ok=True)
+
         tsec = await genss(filename)
         fps = 10 / tsec
-        ncmd = f"ffmpeg -i '{filename}' -vf fps={fps} -vframes 10 '{hash}/pic%01d.png'"
+
+        # Generate 10 screenshots
+        screenshot_cmd = f"ffmpeg -i '{filename}' -vf fps={fps} -vframes 10 '{hash_dir}/pic%01d.png'"
         process = await asyncio.create_subprocess_shell(
-            ncmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            screenshot_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
         )
         await process.communicate()
+
         ss, dd = await duration_s(filename)
-        __ = filename.split(".mkv")[-2]
-        out = __ + "_sample.mkv"
-        _ncmd = f'ffmpeg -i """{filename}""" -preset ultrafast -ss {ss} -to {dd} -c:v copy -crf 27 -map 0:v -c:a aac -map 0:a -c:s copy -map 0:s? """{out}""" -y'
-        process = await asyncio.create_subprocess_shell(
-            _ncmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        out_sample = os.path.splitext(filename)[0] + "_sample.mkv"
+
+        # Create sample video
+        sample_cmd = (
+            f'ffmpeg -i "{filename}" -preset ultrafast -ss {ss} -to {dd} '
+            f'-c:v copy -crf 27 -map 0:v -c:a aac -map 0:a -c:s copy -map 0:s? "{out_sample}" -y'
         )
-        stdout, stderr = await process.communicate()
-        er = stderr.decode().strip()
-        try:
-            if er:
-                if not os.path.exists(out) or os.path.getsize(out) == 0:
-                    log.error(str(er))
-                    return (ss_path, sp_path)
-        except Exception:
-            print(e)
-        return hash, out
+        process = await asyncio.create_subprocess_shell(
+            sample_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        _, stderr = await process.communicate()
+        error_log = stderr.decode().strip()
+
+        if not os.path.exists(out_sample) or os.path.getsize(out_sample) == 0:
+            log.error("⚠️ Sample file not generated or is empty.")
+            log.error(error_log)
+            return "", ""
+
+        return hash_dir, out_sample
+
     except Exception as err:
-        log.error(str(err))
+        log.error(f"🔥 gen_ss_sam failed: {err}")
+        return "", ""
