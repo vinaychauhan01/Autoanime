@@ -134,20 +134,4 @@ async def extra_utils(msg_id, out_path):
         for chat_id in Var.BACKUP_CHANNEL.split():
             await msg.copy(int(chat_id))
 
-    # MediaInfo, ScreenShots, Sample Video ( Add-ons Features )
-    # Coming soon: generate_sample_clip(out_path), capture_screenshots(out_path), upload_media_info(out_path)
-
-
-Your auto_anime.py code has been fully updated and cleaned up. The formatting is corrected, and the structure is now easier to read and maintain.
-
-Would you like me to:
-
-Add screenshot/sample generation functions?
-
-Implement retry logic on failure?
-
-Send notifications to a log or admin group?
-
-
-Let me know how you want to enhance it further.
 
