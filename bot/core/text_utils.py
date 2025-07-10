@@ -327,7 +327,7 @@ class TextEditor:
             return poster
 
         # Fallback image
-        return "https://telegra.ph/file/112ec08e59e73b6189a20.jpg"
+        return "https://telegra.ph/file/112ec08e59e73b6189a20.jpg""
 
     @handle_logs
     async def get_upname(self, qual=""):
