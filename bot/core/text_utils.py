@@ -124,9 +124,36 @@ class AniLister:
             self.__vars = {'search' : self.__ani_name}
     
     async def post_data(self):
-        async with ClientSession() as sess:
-            async with sess.post(self.__api, json={'query': ANIME_GRAPHQL_QUERY, 'variables': self.__vars}) as resp:
-                return (resp.status, await resp.json(), resp.headers)
+        try:
+            async with ClientSession() as sess:
+                async with sess.post(
+                    self.__api,
+                    json={'query': ANIME_GRAPHQL_QUERY, 'variables': self.__vars},
+                    timeout=15
+                ) as resp:
+                    if resp.status != 200:
+                        return (resp.status, None, resp.headers)
+
+                    if resp.content_type != "application/json":
+                        raise ContentTypeError(
+                            resp.request_info,
+                            resp.history,
+                            message=f"Unexpected content-type: {resp.content_type}"
+                        )
+
+                    return (resp.status, await resp.json(), resp.headers)
+
+        except ContentTypeError as e:
+            await rep.report(f"AniList JSON decode failed: {e}", "error")
+            return (500, None, None)
+
+        except ClientError as e:
+            await rep.report(f"AniList client error: {e}", "error")
+            return (503, None, None)
+
+        except Exception as e:
+            await rep.report(f"Unexpected AniList error: {e}", "error")
+            return (500, None, None)
         
     async def get_anidata(self):
         res_code, resp_json, res_heads = await self.post_data()
