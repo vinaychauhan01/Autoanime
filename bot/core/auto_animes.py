@@ -25,11 +25,9 @@ if ani_id not in ani_cache['ongoing']:
             return
 
         await rep.report(f"New Anime Torrent Found!\n\n{name}", "info")
-        post_msg = await bot.send_photo(
-            Var.MAIN_CHANNEL,
-            photo=await aniInfo.get_poster(),
-            caption=await aniInfo.get_caption()
-        )
+        poster = await aniInfo.get_poster()
+        caption = await aniInfo.get_caption()
+        post_msg = await bot.send_photo(Var.MAIN_CHANNEL, photo=poster, caption=caption)
 
         await asleep(1.5)
         stat_msg = await sendMessage(Var.MAIN_CHANNEL, f"‣ <b>Anime Name :</b> <b><i>{name}</i></b>\n\n<i>Downloading...</i>")
@@ -105,5 +103,6 @@ if Var.BACKUP_CHANNEL != 0:
     for chat_id in Var.BACKUP_CHANNEL.split():
         await msg.copy(int(chat_id))
 
-# Placeholder for screenshots/sample video/media info etc.
+# MediaInfo, ScreenShots, Sample Video ( Add-ons Features )
+# Coming soon: generate_sample_clip(out_path), capture_screenshots(out_path), upload_media_info(out_path)
 
