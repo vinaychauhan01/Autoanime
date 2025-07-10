@@ -157,7 +157,50 @@ class AniLister:
             await rep.report(f"Unexpected AniList error: {e}", "error")
             return (500, None, None)
 
-    @handle_logs
+    async def get_jikan_data(self):
+        jikan_api = f"https://api.jikan.moe/v4/anime?q={self.__ani_name}"
+        try:
+            async with ClientSession() as sess:
+                async with sess.get(jikan_api, timeout=10) as resp:
+                    if resp.status != 200:
+                        return {}
+
+                    data = await resp.json()
+                    anime = data.get("data", [])[0] if data.get("data") else None
+                    if not anime:
+                        return {}
+
+                    aired = anime.get("aired", {}).get("from", "")
+                    y, m, d = None, None, None
+                    if aired:
+                        try:
+                            y, m, d = int(aired[:4]), int(aired[5:7]), int(aired[8:10])
+                        except:
+                            pass
+
+                    return {
+                        "title": {
+                            "romaji": anime.get("title"),
+                            "english": anime.get("title_english"),
+                            "native": anime.get("title_japanese")
+                        },
+                        "genres": [g["name"] for g in anime.get("genres", [])],
+                        "startDate": {
+                            "year": y,
+                            "month": m,
+                            "day": d
+                        },
+                        "episodes": anime.get("episodes"),
+                        "status": anime.get("status"),
+                        "description": anime.get("synopsis"),
+                        "coverImage": {
+                            "large": anime["images"]["jpg"]["image_url"]
+                        }
+                    }
+        except Exception as e:
+            await rep.report(f"Jikan Fallback Error: {e}", "error")
+            return {}
+
     async def get_kitsu_data(self):
         kitsu_api = f"https://kitsu.io/api/edge/anime?filter[text]={self.__ani_name}"
         try:
@@ -224,8 +267,12 @@ class AniLister:
             await asleep(5)
             return await self.get_anidata()
         else:
-            await rep.report(f"AniList API Error: {res_code}, trying Kitsu fallback...", "warning", log=False)
-            return await self.get_kitsu_data()
+            await rep.report(f"AniList API Error: {res_code}, trying Jikan fallback...", "warning", log=False)
+            data = await self.get_jikan_data()
+            if not data:
+                await rep.report("Jikan failed. Trying Kitsu fallback...", "warning", log=False)
+                data = await self.get_kitsu_data()
+            return data
 
 class TextEditor:
     def __init__(self, name):
