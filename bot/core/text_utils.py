@@ -164,7 +164,7 @@ class AniLister:
         kitsu_api = f"https://kitsu.io/api/edge/anime?filter[text]={self.__ani_name}"
         try:
             async with ClientSession() as sess:
-                async with sess.get(kitsu_api, timeout=10) as resp:
+                async with sess.get(kitsu_api, headers={'Accept': 'application/vnd.api+json'}, timeout=10) as resp:
                     if resp.status != 200:
                         return {}
 
@@ -273,33 +273,37 @@ class AniLister:
             return {}
 
     @handle_logs
-    async def get_season(self, anime_data: dict) -> str:
-        """Detect the anime season from the provided data."""
-        # AniList provides direct season and year
+    async def get_season(self, anime_data: dict, parsed_data: dict = None) -> str:
+        """Detect the anime season number from parsed filename or API data."""
+        if parsed_data and parsed_data.get("anime_season"):
+            anime_season = parsed_data.get("anime_season")
+            # Handle case where anime_season is a list (e.g., ['2'] or ['01'])
+            if isinstance(anime_season, list):
+                anime_season = anime_season[-1] if anime_season else "1"
+            try:
+                season_num = int(anime_season)
+                return f"Season {season_num}"
+            except (ValueError, TypeError):
+                pass  # Fallback to other methods if conversion fails
+
         if anime_data.get("season") and anime_data.get("seasonYear"):
-            return f"{anime_data['season'].capitalize()} {anime_data['seasonYear']}"
+            # AniList sometimes includes season info indirectly; try to infer from title or synonyms
+            titles = anime_data.get("title", {})
+            synonyms = anime_data.get("synonyms", [])
+            all_titles = [titles.get(k) for k in ("romaji", "english", "native") if titles.get(k)] + synonyms
+            for title in all_titles:
+                # Look for patterns like "Season 2", "2nd Season", or "S2" in titles/synonyms
+                title_lower = title.lower()
+                if "season" in title_lower or "s" in title_lower:
+                    import re
+                    match = re.search(r"(?:season|s)\s*(\d+)", title_lower, re.IGNORECASE)
+                    if match:
+                        return f"Season {match.group(1)}"
 
-        # Fallback to date-based season detection
-        start_date = anime_data.get("startDate", {})
-        year = start_date.get("year")
-        month = start_date.get("month")
+        # Fallback to default if no season info is found
+        return "Season 1"  # Assume first season if no data is available
 
-        if year and month:
-            # Standard season mapping: Winter (Jan-Mar), Spring (Apr-Jun), Summer (Jul-Sep), Fall (Oct-Dec)
-            if 1 <= month <= 3:
-                season = "Winter"
-            elif 4 <= month <= 6:
-                season = "Spring"
-            elif 7 <= month <= 9:
-                season = "Summer"
-            elif 10 <= month <= 12:
-                season = "Fall"
-            else:
-                season = "N/A"
-            return f"{season} {year}"
-
-        return "N/A"
-
+    @handle_logs
     async def get_anidata(self):
         res_code, resp_json, res_heads = await self.post_data()
         while res_code == 404 and self.__ani_year > 2020:
@@ -312,7 +316,9 @@ class AniLister:
             res_code, resp_json, res_heads = await self.post_data()
 
         if res_code == 200:
-            return resp_json.get('data', {}).get('Media', {}) or {}
+            data = resp_json.get('data', {}).get('Media', {})
+            if data and any(self.__ani_name.lower() in (data.get('title', {}).get(k, '').lower() or '') for k in ['romaji', 'english', 'native']):
+                return data
         elif res_code == 429:
             f_timer = int(res_heads['Retry-After'])
             await rep.report(f"AniList API FloodWait: {res_code}, Sleeping for {f_timer} !!", "error")
@@ -323,16 +329,19 @@ class AniLister:
             await asleep(5)
             return await self.get_anidata()
         else:
-            await rep.report(f"AniList API Error: {res_code}, trying Kitsu fallback...", "warning", log=False)
-            kitsu_data = await self.get_kitsu_data()
-            if kitsu_data:
-                return kitsu_data
-            await rep.report(f"Kitsu API failed, trying Jikan fallback...", "warning", log=False)
+            await rep.report(f"AniList API Error: {res_code}, trying Jikan fallback...", "warning", log=False)
             jikan_data = await self.get_jikan_data()
-            if jikan_data:
+            if jikan_data and self.__ani_name.lower() in (jikan_data.get('title', {}).get('romaji', '').lower() or jikan_data.get('title', {}).get('english', '').lower() or jikan_data.get('title', {}).get('native', '').lower()):
                 return jikan_data
-            await rep.report(f"Jikan API failed, trying ANN fallback...", "warning", log=False)
-            return await self.get_ann_data()
+            await rep.report(f"Jikan API failed or mismatch, trying ANN fallback...", "warning", log=False)
+            ann_data = await self.get_ann_data()
+            if ann_data and self.__ani_name.lower() in (ann_data.get('title', {}).get('romaji', '').lower() or ''):
+                return ann_data
+            await rep.report(f"ANN API failed or mismatch, trying Kitsu fallback...", "warning", log=False)
+            kitsu_data = await self.get_kitsu_data()
+            if kitsu_data and self.__ani_name.lower() in (kitsu_data.get('title', {}).get('romaji', '').lower() or kitsu_data.get('title', {}).get('english', '').lower() or kitsu_data.get('title', {}).get('native', '').lower()):
+                return kitsu_data
+            return {}
 
 class TextEditor:
     def __init__(self, name):
@@ -348,7 +357,7 @@ class TextEditor:
                 continue
             cache_names.append(ani_name)
             self.adata = await AniLister(ani_name, datetime.now().year).get_anidata()
-            if self.adata:
+            if self.adata and any(ani_name.lower() in (self.adata.get('title', {}).get(k, '').lower() or '') for k in ['romaji', 'english', 'native']):
                 break
 
     @handle_logs
@@ -358,37 +367,59 @@ class TextEditor:
 
     @handle_logs
     async def parse_name(self, no_s=False, no_y=False):
-        anime_name = self.pdata.get("anime_title")
-        anime_season = self.pdata.get("anime_season")
-        anime_year = self.pdata.get("anime_year")
-        if anime_name:
-            pname = anime_name
-            if not no_s and self.pdata.get("episode_number") and anime_season:
-                pname += f" {anime_season}"
-            if not no_y and anime_year:
-                pname += f" {anime_year}"
-            return pname
-        return anime_name
+        anime_name = self.pdata.get("anime_title", "").strip()
+        # Remove episode numbers, seasons, and other non-title parts
+        if not no_s and self.pdata.get("episode_number"):
+            anime_name = anime_name.split(f" {self.pdata.get('episode_number')}", 1)[0]
+        if not no_y and self.pdata.get("anime_year"):
+            anime_name = anime_name.split(f" {self.pdata.get('anime_year')}", 1)[0]
+        anime_name = " ".join(word for word in anime_name.split() if not any(char in word for char in "[]()"))
+        return anime_name or self.__name.split("[", 1)[0].strip()
 
     @handle_logs
     async def get_poster(self):
+        # Try AniList first using anime ID
         if anime_id := await self.get_id():
-            return f"https://img.anili.st/media/{anime_id}"
-        kitsu_data = await AniLister(self.__name, datetime.now().year).get_kitsu_data()
-        if kitsu_data and (poster := kitsu_data.get("coverImage", {}).get("large")):
-            return poster
-        jikan_data = await AniLister(self.__name, datetime.now().year).get_jikan_data()
-        if jikan_data and (poster := jikan_data.get("coverImage", {}).get("large")):
-            return poster
-        try:
+            poster_url = f"https://img.anili.st/media/{anime_id}"
             async with ClientSession() as sess:
-                async with sess.get("https://api.waifu.pics/sfw/waifu") as resp:
+                async with sess.head(poster_url, timeout=5) as resp:
                     if resp.status == 200:
-                        data = await resp.json()
-                        return data.get("url", "https://telegra.ph/file/112ec08e59e73b6189a20.jpg")
-        except Exception as e:
-            await rep.report(f"Waifu.pics Fallback Error: {e}", "error")
-        return "https://telegra.ph/file/112ec08e59e73b6189a20.jpg"
+                        return poster_url
+                await rep.report(f"AniList poster URL invalid for ID {anime_id}", "warning")
+
+        # Respect Jikan rate limits (2-second delay)
+        await asleep(2)
+
+        # Try Jikan
+        jikan_data = await AniLister(self.__name, datetime.now().year).get_jikan_data()
+        if jikan_data and (poster := jikan_data.get("coverImage", {}).get("large")) and self.__name.lower() in (jikan_data.get('title', {}).get('romaji', '').lower() or jikan_data.get('title', {}).get('english', '').lower() or jikan_data.get('title', {}).get('native', '').lower()):
+            async with ClientSession() as sess:
+                async with sess.head(poster, timeout=5) as resp:
+                    if resp.status == 200:
+                        return poster
+                await rep.report(f"Jikan poster URL invalid: {poster}", "warning")
+
+        # Try Kitsu
+        kitsu_data = await AniLister(self.__name, datetime.now().year).get_kitsu_data()
+        if kitsu_data and (poster := kitsu_data.get("coverImage", {}).get("large")) and self.__name.lower() in (kitsu_data.get('title', {}).get('romaji', '').lower() or kitsu_data.get('title', {}).get('english', '').lower() or kitsu_data.get('title', {}).get('native', '').lower()):
+            async with ClientSession() as sess:
+                async with sess.head(poster, timeout=5) as resp:
+                    if resp.status == 200:
+                        return poster
+                await rep.report(f"Kitsu poster URL invalid: {poster}", "warning")
+
+        # Try Anime News Network (ANN)
+        ann_data = await AniLister(self.__name, datetime.now().year).get_ann_data()
+        if ann_data and (poster := ann_data.get("coverImage", {}).get("large")) and self.__name.lower() in (ann_data.get('title', {}).get('romaji', '').lower() or ''):
+            async with ClientSession() as sess:
+                async with sess.head(poster, timeout=5) as resp:
+                    if resp.status == 200:
+                        return poster
+                await rep.report(f"ANN poster URL invalid: {poster}", "warning")
+
+        # Return None if no valid poster is found for the specific anime
+        await rep.report(f"No valid poster found for anime: {self.__name}", "error")
+        return None
 
     @handle_logs
     async def get_upname(self, qual=""):
@@ -403,7 +434,10 @@ class TextEditor:
     @handle_logs
     async def get_caption(self):
         sd = self.adata.get('startDate', {})
-        startdate = f"{month_name[sd['month']]} {sd['day']}, {sd['year']}" if sd.get('day') and sd.get('year') else ""
+        # Convert month to integer and validate all fields before accessing month_name
+        startdate = (f"{month_name[int(sd['month'])]} {sd['day']}, {sd['year']}" 
+                     if sd.get('day') and sd.get('month') and sd.get('year') 
+                     and str(sd['month']).isdigit() else "")
         ed = self.adata.get('endDate', {})
         enddate = f"{month_name[ed['month']]} {ed['day']}, {ed['year']}" if ed.get('day') and ed.get('year') else ""
         titles = self.adata.get("title", {})
