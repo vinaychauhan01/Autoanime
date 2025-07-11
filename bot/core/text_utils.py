@@ -300,39 +300,41 @@ class AniLister:
 
         return "N/A"
 
+    @handle_logs
     async def get_anidata(self):
+    res_code, resp_json, res_heads = await self.post_data()
+    while res_code == 404 and self.__ani_year > 2020:
+        self.__update_vars()
+        await rep.report(f"AniList Query Name: {self.__ani_name}, Retrying with {self.__ani_year}", "warning", log=False)
         res_code, resp_json, res_heads = await self.post_data()
-        while res_code == 404 and self.__ani_year > 2020:
-            self.__update_vars()
-            await rep.report(f"AniList Query Name: {self.__ani_name}, Retrying with {self.__ani_year}", "warning", log=False)
-            res_code, resp_json, res_heads = await self.post_data()
 
-        if res_code == 404:
-            self.__update_vars(year=False)
-            res_code, resp_json, res_heads = await self.post_data()
+    if res_code == 404:
+        self.__update_vars(year=False)
+        res_code, resp_json, res_heads = await self.post_data()
 
-        if res_code == 200:
-            return resp_json.get('data', {}).get('Media', {}) or {}
-        elif res_code == 429:
-            f_timer = int(res_heads['Retry-After'])
-            await rep.report(f"AniList API FloodWait: {res_code}, Sleeping for {f_timer} !!", "error")
-            await asleep(f_timer)
-            return await self.get_anidata()
-        elif res_code in [500, 501, 502]:
-            await rep.report(f"AniList Server API Error: {res_code}, Waiting 5s to Try Again !!", "error")
-            await asleep(5)
-            return await self.get_anidata()
-        else:
-            await rep.report(f"AniList API Error: {res_code}, trying Kitsu fallback...", "warning", log=False)
-            kitsu_data = await self.get_kitsu_data()
-            if kitsu_data:
-                return kitsu_data
-            await rep.report(f"Kitsu API failed, trying Jikan fallback...", "warning", log=False)
-            jikan_data = await self.get_jikan_data()
-            if jikan_data:
-                return jikan_data
-            await rep.report(f"Jikan API failed, trying ANN fallback...", "warning", log=False)
-            return await self.get_ann_data()
+    if res_code == 200:
+        return resp_json.get('data', {}).get('Media', {}) or {}
+    elif res_code == 429:
+        f_timer = int(res_heads['Retry-After'])
+        await rep.report(f"AniList API FloodWait: {res_code}, Sleeping for {f_timer} !!", "error")
+        await asleep(f_timer)
+        return await self.get_anidata()
+    elif res_code in [500, 501, 502]:
+        await rep.report(f"AniList Server API Error: {res_code}, Waiting 5s to Try Again !!", "error")
+        await asleep(5)
+        return await self.get_anidata()
+    else:
+        await rep.report(f"AniList API Error: {res_code}, trying Jikan fallback...", "warning", log=False)
+        jikan_data = await self.get_jikan_data()
+        if jikan_data:
+            return jikan_data
+        await rep.report(f"Jikan API failed, trying ANN fallback...", "warning", log=False)
+        ann_data = await self.get_ann_data()
+        if ann_data:
+            return ann_data
+        await rep.report(f"ANN API failed, trying Kitsu fallback...", "warning", log=False)
+        kitsu_data = await self.get_kitsu_data()
+        return kitsu_data
 
 class TextEditor:
     def __init__(self, name):
