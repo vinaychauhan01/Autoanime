@@ -18,7 +18,7 @@ from html_telegraph_poster import TelegraphPoster
 from feedparser import parse as feedparse
 from pyrogram.enums import ChatMemberStatus
 from pyrogram.types import InlineKeyboardButton
-from pyrogram.errors import MessageNotModified, FloodWait, UserNotParticipant, ReplyMarkupInvalid, MessageIdInvalid
+from pyrogram.errors import MessageNotModified, FloodWait, UserNotParticipant, ReplyMarkupInvalid, MessageIdInvalid, RPCError
 
 from bot import bot, bot_loop, LOGS, Var
 from .reporter import rep
@@ -31,12 +31,12 @@ def handle_logs(func):
         except Exception:
             await rep.report(format_exc(), "error")
     return wrapper
-    
+
 async def sync_to_async(func, *args, wait=True, **kwargs):
     pfunc = partial(func, *args, **kwargs)
     future = bot_loop.run_in_executor(ThreadPoolExecutor(max_workers=cpu_count() * 125), pfunc)
     return await future if wait else future
-    
+
 def new_task(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
@@ -59,7 +59,7 @@ async def aio_urldownload(link):
         async with sess.get(link) as data:
             image = await data.read()
     path = f"thumbs/{link.split('/')[-1]}"
-    if not path.endswith((".jpg" or ".png")):
+    if not path.endswith((".jpg", ".png")):
         path += ".jpg"
     async with aiopen(path, "wb") as f:
         await f.write(image)
@@ -78,9 +78,9 @@ async def get_telegraph(out):
 {out}
 </pre>
 """,
-        )
+    )
     return page.get("url")
-    
+
 async def sendMessage(chat, text, buttons=None, get_error=False, **kwargs):
     try:
         if isinstance(chat, int):
@@ -100,13 +100,20 @@ async def sendMessage(chat, text, buttons=None, get_error=False, **kwargs):
         if get_error:
             raise e
         return str(e)
-        
+
 async def editMessage(msg, text, buttons=None, get_error=False, **kwargs):
     try:
         if not msg:
             return None
-        return await msg.edit_text(text=text, disable_web_page_preview=True, 
-                                        reply_markup=buttons, **kwargs)
+        if not text or not isinstance(text, str):
+            text = "⚠️ Unable to update message: Content is empty or invalid."
+            await rep.report(f"editMessage called with invalid text: {text}", "warning")
+        return await msg.edit_text(
+            text=text,
+            disable_web_page_preview=True,
+            reply_markup=buttons,
+            **kwargs
+        )
     except FloodWait as f:
         await rep.report(f, "warning")
         sleep(f.value * 1.2)
@@ -115,6 +122,11 @@ async def editMessage(msg, text, buttons=None, get_error=False, **kwargs):
         return await editMessage(msg, text, None, get_error, **kwargs)
     except (MessageNotModified, MessageIdInvalid):
         pass
+    except RPCError as e:
+        await rep.report(f"RPCError in editMessage: {str(e)}", "error")
+        if "MESSAGE_EMPTY" in str(e):
+            await rep.report(f"Attempted to edit with empty text: {text}", "warning")
+        raise
     except Exception as e:
         await rep.report(format_exc(), "error")
         if get_error:
@@ -139,7 +151,7 @@ async def is_fsubbed(uid):
             await rep.report(format_exc(), "warning")
             continue
     return True
-        
+
 async def get_fsubs(uid, txtargs):
     txt = "<b><i>Please Join Following Channels to Use this Bot!</i></b>\n\n"
     btns = []
@@ -176,7 +188,7 @@ async def mediainfo(file, get_json=False, get_duration=False):
     except Exception as err:
         await rep.report(format_exc(), "error")
         return ""
-        
+
 async def clean_up():
     try:
         (await aiormtree(dirtree) for dirtree in ("downloads", "thumbs", "encode"))
