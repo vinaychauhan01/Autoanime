@@ -273,73 +273,73 @@ class AniLister:
             return {}
 
     @handle_logs
-async def get_season(self, anime_data: dict, parsed_data: dict = None) -> str:
-    """Detect the anime season number from parsed filename or API data."""
-    # Try to get season from parsed filename (anitopy data)
-    if parsed_data and parsed_data.get("anime_season"):
-        anime_season = parsed_data.get("anime_season")
-        # Handle case where anime_season is a list (e.g., ['2'] or ['01'])
-        if isinstance(anime_season, list):
-            anime_season = anime_season[-1] if anime_season else "1"
-        try:
-            season_num = int(anime_season)
-            return f"Season {season_num}"
-        except (ValueError, TypeError):
-            pass  # Fallback to other methods if conversion fails
+    async def get_season(self, anime_data: dict, parsed_data: dict = None) -> str:
+        """Detect the anime season number from parsed filename or API data."""
+        # Try to get season from parsed filename (anitopy data)
+        if parsed_data and parsed_data.get("anime_season"):
+            anime_season = parsed_data.get("anime_season")
+            # Handle case where anime_season is a list (e.g., ['2'] or ['01'])
+            if isinstance(anime_season, list):
+                anime_season = anime_season[-1] if anime_season else "1"
+            try:
+                season_num = int(anime_season)
+                return f"Season {season_num}"
+            except (ValueError, TypeError):
+                pass  # Fallback to other methods if conversion fails
 
-    # Fallback to API data (e.g., AniList or Jikan)
-    if anime_data.get("season") and anime_data.get("seasonYear"):
-        # AniList sometimes includes season info indirectly; try to infer from title or synonyms
-        titles = anime_data.get("title", {})
-        synonyms = anime_data.get("synonyms", [])
-        all_titles = [titles.get(k) for k in ("romaji", "english", "native") if titles.get(k)] + synonyms
-        for title in all_titles:
-            # Look for patterns like "Season 2", "2nd Season", or "S2" in titles/synonyms
-            title_lower = title.lower()
-            if "season" in title_lower or "s" in title_lower:
-                import re
-                match = re.search(r"(?:season|s)\s*(\d+)", title_lower, re.IGNORECASE)
-                if match:
-                    return f"Season {match.group(1)}"
+            # Fallback to API data (e.g., AniList or Jikan)
+            if anime_data.get("season") and anime_data.get("seasonYear"):
+                # AniList sometimes includes season info indirectly; try to infer from title or synonyms
+                titles = anime_data.get("title", {})
+                synonyms = anime_data.get("synonyms", [])
+                all_titles = [titles.get(k) for k in ("romaji", "english", "native") if titles.get(k)] + synonyms
+                for title in all_titles:
+                    # Look for patterns like "Season 2", "2nd Season", or "S2" in titles/synonyms
+                    title_lower = title.lower()
+                    if "season" in title_lower or "s" in title_lower:
+                        import re
+                        match = re.search(r"(?:season|s)\s*(\d+)", title_lower, re.IGNORECASE)
+                        if match:
+                            return f"Season {match.group(1)}"
 
-    # Fallback to default if no season info is found
-    return "Season 1"  # Assume first season if no data is available
+            # Fallback to default if no season info is found
+            return "Season 1"  # Assume first season if no data is available
 
     @handle_logs
     async def get_anidata(self):
-    res_code, resp_json, res_heads = await self.post_data()
-    while res_code == 404 and self.__ani_year > 2020:
-        self.__update_vars()
-        await rep.report(f"AniList Query Name: {self.__ani_name}, Retrying with {self.__ani_year}", "warning", log=False)
         res_code, resp_json, res_heads = await self.post_data()
+        while res_code == 404 and self.__ani_year > 2020:
+            self.__update_vars()
+            await rep.report(f"AniList Query Name: {self.__ani_name}, Retrying with {self.__ani_year}", "warning", log=False)
+            res_code, resp_json, res_heads = await self.post_data()
 
-    if res_code == 404:
-        self.__update_vars(year=False)
-        res_code, resp_json, res_heads = await self.post_data()
+        if res_code == 404:
+            self.__update_vars(year=False)
+            res_code, resp_json, res_heads = await self.post_data()
 
-    if res_code == 200:
-        return resp_json.get('data', {}).get('Media', {}) or {}
-    elif res_code == 429:
-        f_timer = int(res_heads['Retry-After'])
-        await rep.report(f"AniList API FloodWait: {res_code}, Sleeping for {f_timer} !!", "error")
-        await asleep(f_timer)
-        return await self.get_anidata()
-    elif res_code in [500, 501, 502]:
-        await rep.report(f"AniList Server API Error: {res_code}, Waiting 5s to Try Again !!", "error")
-        await asleep(5)
-        return await self.get_anidata()
-    else:
-        await rep.report(f"AniList API Error: {res_code}, trying Jikan fallback...", "warning", log=False)
-        jikan_data = await self.get_jikan_data()
-        if jikan_data:
-            return jikan_data
-        await rep.report(f"Jikan API failed, trying ANN fallback...", "warning", log=False)
-        ann_data = await self.get_ann_data()
-        if ann_data:
-            return ann_data
-        await rep.report(f"ANN API failed, trying Kitsu fallback...", "warning", log=False)
-        kitsu_data = await self.get_kitsu_data()
-        return kitsu_data
+        if res_code == 200:
+            return resp_json.get('data', {}).get('Media', {}) or {}
+        elif res_code == 429:
+            f_timer = int(res_heads['Retry-After'])
+            await rep.report(f"AniList API FloodWait: {res_code}, Sleeping for {f_timer} !!", "error")
+            await asleep(f_timer)
+            return await self.get_anidata()
+        elif res_code in [500, 501, 502]:
+            await rep.report(f"AniList Server API Error: {res_code}, Waiting 5s to Try Again !!", "error")
+            await asleep(5)
+            return await self.get_anidata()
+        else:
+            await rep.report(f"AniList API Error: {res_code}, trying Jikan fallback...", "warning", log=False)
+            jikan_data = await self.get_jikan_data()
+            if jikan_data:
+                return jikan_data
+            await rep.report(f"Jikan API failed, trying ANN fallback...", "warning", log=False)
+            ann_data = await self.get_ann_data()
+            if ann_data:
+                return ann_data
+            await rep.report(f"ANN API failed, trying Kitsu fallback...", "warning", log=False)
+            kitsu_data = await self.get_kitsu_data()
+            return kitsu_data
 
 class TextEditor:
     def __init__(self, name):
@@ -407,28 +407,28 @@ class TextEditor:
             titles = self.adata.get('title', {})
             return f"""[S{anime_season}-{'E'+str(self.pdata.get('episode_number')) if self.pdata.get('episode_number') else ''}] {titles.get('english') or titles.get('romaji') or titles.get('native')} {'['+qual+'p]' if qual else ''} {'['+codec.upper()+'] ' if codec else ''}{'['+lang+']'} {Var.BRAND_UNAME}.mkv"""
 
-    @@handle_logs
-async def get_caption(self):
-    sd = self.adata.get('startDate', {})
-    startdate = f"{month_name[sd['month']]} {sd['day']}, {sd['year']}" if sd.get('day') and sd.get('year') else ""
-    ed = self.adata.get('endDate', {})
-    enddate = f"{month_name[ed['month']]} {ed['day']}, {ed['year']}" if ed.get('day') and ed.get('year') else ""
-    titles = self.adata.get("title", {})
-    # Get season number using AniLister's get_season method, passing parsed_data
-    lister = AniLister(self.__name, datetime.now().year)
-    season = await lister.get_season(self.adata, parsed_data=self.pdata)
+    @handle_logs
+    async def get_caption(self):
+        sd = self.adata.get('startDate', {})
+        startdate = f"{month_name[sd['month']]} {sd['day']}, {sd['year']}" if sd.get('day') and sd.get('year') else ""
+        ed = self.adata.get('endDate', {})
+        enddate = f"{month_name[ed['month']]} {ed['day']}, {ed['year']}" if ed.get('day') and ed.get('year') else ""
+        titles = self.adata.get("title", {})
+        # Get season number using AniLister's get_season method, passing parsed_data
+        lister = AniLister(self.__name, datetime.now().year)
+        season = await lister.get_season(self.adata, parsed_data=self.pdata)
 
-    return CAPTION_FORMAT.format(
-        title=titles.get('english') or titles.get('romaji') or titles.get('native'),
-        form=self.adata.get("format") or "N/A",
-        genres=", ".join(f"{GENRES_EMOJI[x]} #{x.replace(' ', '_').replace('-', '_')}" for x in (self.adata.get('genres') or [])),
-        season=season,
-        avg_score=f"{sc}%" if (sc := self.adata.get('averageScore')) else "N/A",
-        status=self.adata.get("status") or "N/A",
-        start_date=startdate or "N/A",
-        end_date=enddate or "N/A",
-        t_eps=self.adata.get("episodes") or "N/A",
-        plot=(desc if (desc := self.adata.get("description") or "N/A") and len(desc) < 200 else desc[:200] + "..."),
-        ep_no=self.pdata.get("episode_number"),
-        cred=Var.BRAND_UNAME,
-    )
+        return CAPTION_FORMAT.format(
+            title=titles.get('english') or titles.get('romaji') or titles.get('native'),
+            form=self.adata.get("format") or "N/A",
+            genres=", ".join(f"{GENRES_EMOJI[x]} #{x.replace(' ', '_').replace('-', '_')}" for x in (self.adata.get('genres') or [])),
+            season=season,
+            avg_score=f"{sc}%" if (sc := self.adata.get('averageScore')) else "N/A",
+            status=self.adata.get("status") or "N/A",
+            start_date=startdate or "N/A",
+            end_date=enddate or "N/A",
+            t_eps=self.adata.get("episodes") or "N/A",
+            plot=(desc if (desc := self.adata.get("description") or "N/A") and len(desc) < 200 else desc[:200] + "..."),
+            ep_no=self.pdata.get("episode_number"),
+            cred=Var.BRAND_UNAME,
+        )
