@@ -275,7 +275,6 @@ class AniLister:
     @handle_logs
     async def get_season(self, anime_data: dict, parsed_data: dict = None) -> str:
         """Detect the anime season number from parsed filename or API data."""
-        # Try to get season from parsed filename (anitopy data)
         if parsed_data and parsed_data.get("anime_season"):
             anime_season = parsed_data.get("anime_season")
             # Handle case where anime_season is a list (e.g., ['2'] or ['01'])
@@ -287,23 +286,22 @@ class AniLister:
             except (ValueError, TypeError):
                 pass  # Fallback to other methods if conversion fails
 
-            # Fallback to API data (e.g., AniList or Jikan)
-            if anime_data.get("season") and anime_data.get("seasonYear"):
-                # AniList sometimes includes season info indirectly; try to infer from title or synonyms
-                titles = anime_data.get("title", {})
-                synonyms = anime_data.get("synonyms", [])
-                all_titles = [titles.get(k) for k in ("romaji", "english", "native") if titles.get(k)] + synonyms
-                for title in all_titles:
-                    # Look for patterns like "Season 2", "2nd Season", or "S2" in titles/synonyms
-                    title_lower = title.lower()
-                    if "season" in title_lower or "s" in title_lower:
-                        import re
-                        match = re.search(r"(?:season|s)\s*(\d+)", title_lower, re.IGNORECASE)
-                        if match:
-                            return f"Season {match.group(1)}"
+        if anime_data.get("season") and anime_data.get("seasonYear"):
+            # AniList sometimes includes season info indirectly; try to infer from title or synonyms
+            titles = anime_data.get("title", {})
+            synonyms = anime_data.get("synonyms", [])
+            all_titles = [titles.get(k) for k in ("romaji", "english", "native") if titles.get(k)] + synonyms
+            for title in all_titles:
+                # Look for patterns like "Season 2", "2nd Season", or "S2" in titles/synonyms
+                title_lower = title.lower()
+                if "season" in title_lower or "s" in title_lower:
+                    import re
+                    match = re.search(r"(?:season|s)\s*(\d+)", title_lower, re.IGNORECASE)
+                    if match:
+                        return f"Season {match.group(1)}"
 
-            # Fallback to default if no season info is found
-            return "Season 1"  # Assume first season if no data is available
+        # Fallback to default if no season info is found
+        return "Season 1"  # Assume first season if no data is available
 
     @handle_logs
     async def get_anidata(self):
@@ -379,23 +377,48 @@ class TextEditor:
 
     @handle_logs
     async def get_poster(self):
+        # Try AniList first using anime ID
         if anime_id := await self.get_id():
-            return f"https://img.anili.st/media/{anime_id}"
-        kitsu_data = await AniLister(self.__name, datetime.now().year).get_kitsu_data()
-        if kitsu_data and (poster := kitsu_data.get("coverImage", {}).get("large")):
-            return poster
+            poster_url = f"https://img.anili.st/media/{anime_id}"
+            async with ClientSession() as sess:
+                async with sess.head(poster_url, timeout=5) as resp:
+                    if resp.status == 200:
+                        return poster_url
+                await rep.report(f"AniList poster URL invalid for ID {anime_id}", "warning")
+
+        # Respect Jikan rate limits (2-second delay)
+        await asleep(2)
+
+        # Try Jikan
         jikan_data = await AniLister(self.__name, datetime.now().year).get_jikan_data()
         if jikan_data and (poster := jikan_data.get("coverImage", {}).get("large")):
-            return poster
-        try:
             async with ClientSession() as sess:
-                async with sess.get("https://api.waifu.pics/sfw/waifu") as resp:
+                async with sess.head(poster, timeout=5) as resp:
                     if resp.status == 200:
-                        data = await resp.json()
-                        return data.get("url", "https://telegra.ph/file/112ec08e59e73b6189a20.jpg")
-        except Exception as e:
-            await rep.report(f"Waifu.pics Fallback Error: {e}", "error")
-        return "https://telegra.ph/file/112ec08e59e73b6189a20.jpg"
+                        return poster
+                await rep.report(f"Jikan poster URL invalid: {poster}", "warning")
+
+        # Try Kitsu
+        kitsu_data = await AniLister(self.__name, datetime.now().year).get_kitsu_data()
+        if kitsu_data and (poster := kitsu_data.get("coverImage", {}).get("large")):
+            async with ClientSession() as sess:
+                async with sess.head(poster, timeout=5) as resp:
+                    if resp.status == 200:
+                        return poster
+                await rep.report(f"Kitsu poster URL invalid: {poster}", "warning")
+
+        # Try Anime News Network (ANN)
+        ann_data = await AniLister(self.__name, datetime.now().year).get_ann_data()
+        if ann_data and (poster := ann_data.get("coverImage", {}).get("large")):
+            async with ClientSession() as sess:
+                async with sess.head(poster, timeout=5) as resp:
+                    if resp.status == 200:
+                        return poster
+                await rep.report(f"ANN poster URL invalid: {poster}", "warning")
+
+        # Return None if no valid poster is found for the specific anime
+        await rep.report(f"No valid poster found for anime: {self.__name}", "error")
+        return None
 
     @handle_logs
     async def get_upname(self, qual=""):
