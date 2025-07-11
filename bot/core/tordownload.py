@@ -23,7 +23,8 @@ class TorDownloader:
             # Fallback name if not provided
             try:
                 final_name = name or torp._torrent_info._info.name()
-            except Exception:
+            except Exception as e:
+                LOGS.error(f"❌ Failed to get name from magnet torrent: {e}")
                 final_name = "Unknown"
 
             return ospath.join(self.__downdir, final_name)
@@ -31,14 +32,18 @@ class TorDownloader:
         elif torfile := await self.get_torfile(torrent):
             LOGS.info(f"📥 Torrent file downloaded: {torfile}")
             torp = TorrentDownloader(torfile, self.__downdir)
-            await torp.start_download()
-            await aioremove(torfile)
-
             try:
+                await torp.start_download()
+                # Validate torrent info
+                if not hasattr(torp, '_torrent_info') or not torp._torrent_info._info:
+                    raise RuntimeError("Invalid torrent info after download")
                 final_name = torp._torrent_info._info.name()
-            except Exception:
-                final_name = "Unknown"
+            except Exception as e:
+                LOGS.error(f"❌ Error processing torrent file {torfile}: {e}")
+                await aioremove(torfile)
+                return None
 
+            await aioremove(torfile)
             return ospath.join(self.__downdir, final_name)
 
         else:
@@ -58,10 +63,17 @@ class TorDownloader:
                 async with session.get(url) as response:
                     if response.status == 200:
                         async with aiopen(des_dir, 'wb') as file:
-                            async for chunk in response.content.iter_any():
-                                await file.write(chunk)
+                            content = await response.read()  # Read full content
+                            if len(content) == 0:
+                                raise ValueError("Empty torrent file downloaded")
+                            # Check if bencode starts with 'd' (hex 64)
+                            if content and content[0] != 100:  # 100 is ASCII for 'd'
+                                LOGS.warning(f"⚠️ Torrent file {tor_name} may be invalid, does not start with 'd'")
+                            await file.write(content)
                         return des_dir
         except Exception as e:
             LOGS.error(f"❌ Failed to download .torrent file: {e}")
+            if await aiopath.exists(des_dir):
+                await aioremove(des_dir)
 
         return None
