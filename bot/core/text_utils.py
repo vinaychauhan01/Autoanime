@@ -341,7 +341,9 @@ class AniLister:
             kitsu_data = await self.get_kitsu_data()
             if kitsu_data and self.__ani_name.lower() in (kitsu_data.get('title', {}).get('romaji', '').lower() or kitsu_data.get('title', {}).get('english', '').lower() or kitsu_data.get('title', {}).get('native', '').lower()):
                 return kitsu_data
-            return {}
+            # Enhanced fallback if all APIs fail
+            await rep.report(f"All API fallbacks failed for {self.__ani_name}, using minimal fallback", "warning")
+            return {"title": {"romaji": self.__ani_name.split("[", 1)[0].strip()}, "genres": [], "status": "N/A"}
 
 class TextEditor:
     def __init__(self, name):
@@ -359,9 +361,9 @@ class TextEditor:
             self.adata = await AniLister(ani_name, datetime.now().year).get_anidata()
             if self.adata and any(ani_name.lower() in (self.adata.get('title', {}).get(k, '').lower() or '') for k in ['romaji', 'english', 'native']):
                 break
-        if not self.adata:
-            self.adata = {"id": None, "title": {"romaji": self.pdata.get("anime_title", self.__name.split("[", 1)[0].strip())}, "episodes": self.pdata.get("episode_number")}
-            await rep.report(f"Using fallback data for {self.__name}", "warning")
+        if not self.adata or not isinstance(self.adata, dict):
+            self.adata = {"id": None, "title": {"romaji": self.__name.split("[", 1)[0].strip()}, "episodes": self.pdata.get("episode_number")}
+            await rep.report(f"Using fallback data for {self.__name} due to empty or invalid adata", "warning")
 
     @handle_logs
     async def get_id(self):
@@ -441,27 +443,31 @@ class TextEditor:
         # Convert month to integer and validate all fields before accessing month_name
         startdate = (f"{month_name[int(sd['month'])]} {sd['day']}, {sd['year']}" 
                      if sd.get('day') and sd.get('month') and sd.get('year') 
-                     and str(sd['month']).isdigit() else "")
+                     and str(sd['month']).isdigit() else "N/A")
         ed = self.adata.get('endDate', {})
         enddate = (f"{month_name[int(ed['month'])]} {ed['day']}, {ed['year']}" 
-                   if ed.get('day') and sd.get('month') and sd.get('year') 
-                   and str(ed['month']).isdigit() else "")
+                   if ed.get('day') and ed.get('month') and ed.get('year') 
+                   and str(ed['month']).isdigit() else "N/A")
         titles = self.adata.get("title", {})
         # Get season number using AniLister's get_season method, passing parsed_data
         lister = AniLister(self.__name, datetime.now().year)
         season = await lister.get_season(self.adata, parsed_data=self.pdata)
 
-        return CAPTION_FORMAT.format(
+        caption = CAPTION_FORMAT.format(
             title=(titles.get('english') or titles.get('romaji') or titles.get('native') or self.__name.split("[", 1)[0].strip()),
             form=self.adata.get("format") or "N/A",
             genres=", ".join(f"{GENRES_EMOJI[x]} #{x.replace(' ', '_').replace('-', '_')}" for x in (self.adata.get('genres') or [])),
             season=season,
             avg_score=f"{sc}%" if (sc := self.adata.get('averageScore')) else "N/A",
             status=self.adata.get("status") or "N/A",
-            start_date=startdate or "N/A",
-            end_date=enddate or "N/A",
+            start_date=startdate,
+            end_date=enddate,
             t_eps=self.adata.get("episodes") or "N/A",
             plot=(desc if (desc := self.adata.get("description") or "N/A") and len(desc) < 200 else desc[:200] + "..."),
             ep_no=self.pdata.get("episode_number"),
             cred=Var.BRAND_UNAME,
         )
+        if not caption.strip():
+            caption = f"‣ <b>Anime Name :</b> <b><i>{self.__name.split('[', 1)[0].strip() or 'Unknown'}</i></b>\n\n<i>No detailed caption available.</i>"
+            await rep.report(f"Generated caption is empty for {self.__name}, using fallback", "warning")
+        return caption
