@@ -5,11 +5,16 @@ from asyncio import sleep as asleep
 from aiohttp import ClientSession, ClientError, ContentTypeError
 from anitopy import parse
 from xml.etree import ElementTree as ET
+import logging
 
 from bot import Var, bot
 from .ffencoder import ffargs
 from .func_utils import handle_logs
 from .reporter import rep
+
+# Configure a basic logger that only writes to console
+logging.basicConfig(level=logging.WARNING)
+logger = logging.getLogger(__name__)
 
 CAPTION_FORMAT = """
 <b>㊂ <i>{title}</i></b>
@@ -342,7 +347,7 @@ class AniLister:
             if kitsu_data and self.__ani_name.lower() in (kitsu_data.get('title', {}).get('romaji', '').lower() or kitsu_data.get('title', {}).get('english', '').lower() or kitsu_data.get('title', {}).get('native', '').lower()):
                 return kitsu_data
             # All APIs failed, return None to skip torrent
-            await rep.report(f"All API fallbacks failed for {self.__ani_name}, skipping torrent", "warning")
+            await rep.report(f"All API fallbacks failed for {self.__ani_name}, skipping torrent", "warning", log=False)
             return None
 
 class TextEditor:
@@ -360,7 +365,7 @@ class TextEditor:
             cache_names.append(ani_name)
             self.adata = await AniLister(ani_name, datetime.now().year).get_anidata()
             if self.adata is None:  # Check for skip signal
-                await rep.report(f"Skipping torrent for {self.__name} due to no API data", "warning")
+                await rep.report(f"Skipping torrent for {self.__name} due to no API data", "warning", log=False)
                 return False
             if self.adata and any(ani_name.lower() in (self.adata.get('title', {}).get(k, '').lower() or '') for k in ['romaji', 'english', 'native']):
                 break
