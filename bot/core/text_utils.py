@@ -359,6 +359,9 @@ class TextEditor:
             self.adata = await AniLister(ani_name, datetime.now().year).get_anidata()
             if self.adata and any(ani_name.lower() in (self.adata.get('title', {}).get(k, '').lower() or '') for k in ['romaji', 'english', 'native']):
                 break
+        if not self.adata:
+            self.adata = {"id": None, "title": {"romaji": self.pdata.get("anime_title", self.__name.split("[", 1)[0].strip())}, "episodes": self.pdata.get("episode_number")}
+            await rep.report(f"Using fallback data for {self.__name}", "warning")
 
     @handle_logs
     async def get_id(self):
@@ -368,7 +371,8 @@ class TextEditor:
     @handle_logs
     async def parse_name(self, no_s=False, no_y=False):
         anime_name = self.pdata.get("anime_title", "").strip()
-        # Remove episode numbers, seasons, and other non-title parts
+        if not anime_name:
+            anime_name = self.__name.split("[", 1)[0].strip()
         if not no_s and self.pdata.get("episode_number"):
             anime_name = anime_name.split(f" {self.pdata.get('episode_number')}", 1)[0]
         if not no_y and self.pdata.get("anime_year"):
@@ -429,7 +433,7 @@ class TextEditor:
         anime_season = str(ani_s[-1]) if (ani_s := self.pdata.get('anime_season', '01')) and isinstance(ani_s, list) else str(ani_s)
         if anime_name and self.pdata.get("episode_number"):
             titles = self.adata.get('title', {})
-            return f"""[S{anime_season}-{'E'+str(self.pdata.get('episode_number')) if self.pdata.get('episode_number') else ''}] {titles.get('english') or titles.get('romaji') or titles.get('native')} {'['+qual+'p]' if qual else ''} {'['+codec.upper()+'] ' if codec else ''}{'['+lang+']'} {Var.BRAND_UNAME}.mkv"""
+            return f"""[S{anime_season}-{'E'+str(self.pdata.get('episode_number')) if self.pdata.get('episode_number') else ''}] {titles.get('english') or titles.get('romaji') or titles.get('native') or self.__name.split("[", 1)[0].strip()} {'['+qual+'p]' if qual else ''} {'['+codec.upper()+'] ' if codec else ''}{'['+lang+']'} {Var.BRAND_UNAME}.mkv"""
 
     @handle_logs
     async def get_caption(self):
@@ -448,7 +452,7 @@ class TextEditor:
         season = await lister.get_season(self.adata, parsed_data=self.pdata)
 
         return CAPTION_FORMAT.format(
-            title=titles.get('english') or titles.get('romaji') or titles.get('native'),
+            title=(titles.get('english') or titles.get('romaji') or titles.get('native') or self.__name.split("[", 1)[0].strip()),
             form=self.adata.get("format") or "N/A",
             genres=", ".join(f"{GENRES_EMOJI[x]} #{x.replace(' ', '_').replace('-', '_')}" for x in (self.adata.get('genres') or [])),
             season=season,
