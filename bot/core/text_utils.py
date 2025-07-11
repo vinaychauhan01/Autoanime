@@ -273,32 +273,37 @@ class AniLister:
             return {}
 
     @handle_logs
-    async def get_season(self, anime_data: dict) -> str:
-        """Detect the anime season from the provided data."""
-        # AniList provides direct season and year
-        if anime_data.get("season") and anime_data.get("seasonYear"):
-            return f"{anime_data['season'].capitalize()} {anime_data['seasonYear']}"
+async def get_season(self, anime_data: dict, parsed_data: dict = None) -> str:
+    """Detect the anime season number from parsed filename or API data."""
+    # Try to get season from parsed filename (anitopy data)
+    if parsed_data and parsed_data.get("anime_season"):
+        anime_season = parsed_data.get("anime_season")
+        # Handle case where anime_season is a list (e.g., ['2'] or ['01'])
+        if isinstance(anime_season, list):
+            anime_season = anime_season[-1] if anime_season else "1"
+        try:
+            season_num = int(anime_season)
+            return f"Season {season_num}"
+        except (ValueError, TypeError):
+            pass  # Fallback to other methods if conversion fails
 
-        # Fallback to date-based season detection
-        start_date = anime_data.get("startDate", {})
-        year = start_date.get("year")
-        month = start_date.get("month")
+    # Fallback to API data (e.g., AniList or Jikan)
+    if anime_data.get("season") and anime_data.get("seasonYear"):
+        # AniList sometimes includes season info indirectly; try to infer from title or synonyms
+        titles = anime_data.get("title", {})
+        synonyms = anime_data.get("synonyms", [])
+        all_titles = [titles.get(k) for k in ("romaji", "english", "native") if titles.get(k)] + synonyms
+        for title in all_titles:
+            # Look for patterns like "Season 2", "2nd Season", or "S2" in titles/synonyms
+            title_lower = title.lower()
+            if "season" in title_lower or "s" in title_lower:
+                import re
+                match = re.search(r"(?:season|s)\s*(\d+)", title_lower, re.IGNORECASE)
+                if match:
+                    return f"Season {match.group(1)}"
 
-        if year and month:
-            # Standard season mapping: Winter (Jan-Mar), Spring (Apr-Jun), Summer (Jul-Sep), Fall (Oct-Dec)
-            if 1 <= month <= 3:
-                season = "Winter"
-            elif 4 <= month <= 6:
-                season = "Spring"
-            elif 7 <= month <= 9:
-                season = "Summer"
-            elif 10 <= month <= 12:
-                season = "Fall"
-            else:
-                season = "N/A"
-            return f"{season} {year}"
-
-        return "N/A"
+    # Fallback to default if no season info is found
+    return "Season 1"  # Assume first season if no data is available
 
     @handle_logs
     async def get_anidata(self):
