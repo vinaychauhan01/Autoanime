@@ -35,8 +35,12 @@ async def fetch_animes():
 async def get_animes(name, torrent, force=False):
     try:
         aniInfo = TextEditor(name)
-        await aniInfo.load_anilist()
-        # Check and fallback if adata or pdata is None
+        # Check if load_anilist succeeds, skip if it returns False
+        if not await aniInfo.load_anilist():
+            await rep.report(f"Skipping torrent download for {name} due to no API data", "warning")
+            return
+
+        # Check and fallback if adata or pdata is None after successful load_anilist
         if aniInfo.adata is None or not isinstance(aniInfo.adata, dict):
             aniInfo.adata = {"id": None, "title": {"romaji": name.split("[", 1)[0].strip()}}
             await rep.report(f"adata is None or invalid for {name}, using fallback", "warning")
