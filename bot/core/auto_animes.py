@@ -5,10 +5,9 @@ from aiofiles.os import remove as aioremove
 from traceback import format_exc
 from base64 import urlsafe_b64encode
 from time import time
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-import logging
+import os
 
-from bot import bot, bot_loop, Var, ani_cache, ffQueue, ffLock, ff_queued
+from bot import bot, bot_loop, Var, ani_cache, current_downloads, ffQueue, ffLock, ff_queued
 from .tordownload import TorDownloader
 from .database import db
 from .func_utils import getfeed, encode, editMessage, sendMessage, convertBytes
@@ -17,16 +16,16 @@ from .ffencoder import FFEncoder
 from .tguploader import TgUploader
 from .reporter import rep
 
-# Configure a basic logger that only writes to console
-logging.basicConfig(level=logging.WARNING)
-logger = logging.getLogger(__name__)
-
 btn_formatter = {
     '1080': '𝟭𝟬𝟴𝟬𝗽',
     '720': '𝟳𝟮𝟬𝗽',
     '480': '𝟰𝟴𝟬𝗽',
     '360': '𝟯𝟲𝟬𝗽'
 }
+
+# Initialize current_downloads if not already set
+if 'current_downloads' not in globals():
+    current_downloads = set()
 
 async def fetch_animes():
     await rep.report("Fetch Animes Started !!", "info")
@@ -39,11 +38,15 @@ async def fetch_animes():
 
 async def get_animes(name, torrent, force=False):
     try:
+        # Check if torrent is in skip list
+        if 'skip_torrents' in ani_cache and name.lower() in ani_cache['skip_torrents']:
+            await rep.report(f"Skipping torrent {name} as it is in skip list", "warning", log=False)
+            return
+
         aniInfo = TextEditor(name)
         # Check if load_anilist succeeds, skip if it returns False
         if not await aniInfo.load_anilist():
-            # Use custom logger to avoid channel
-            logger.warning(f"Skipping torrent download for {name} due to no API data")
+            await rep.report(f"Skipping torrent download for {name} due to no API data", "warning", log=False)
             return
 
         # Check and fallback if adata or pdata is None after successful load_anilist
@@ -85,7 +88,13 @@ async def get_animes(name, torrent, force=False):
 
             await asleep(1.5)
             stat_msg = await sendMessage(Var.MAIN_CHANNEL, f"‣ <b>Anime Name :</b> <b><i>{name or 'Unknown'}</i></b>\n\n<i>Downloading...</i>")
-            dl = await TorDownloader("./downloads").download(torrent, name)
+            
+            # Add to current_downloads before starting download
+            current_downloads.add(name.lower())
+            try:
+                dl = await TorDownloader("./downloads").download(torrent, name)
+            finally:
+                current_downloads.remove(name.lower())
 
             if not dl or not ospath.exists(dl):
                 await rep.report(f"File Download Incomplete, Try Again", "error")
