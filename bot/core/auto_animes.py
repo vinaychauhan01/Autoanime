@@ -64,6 +64,9 @@ async def get_animes(name, torrent, force=False):
             await rep.report(f"New Anime Torrent Found!\n\n{name}", "info")
             poster = await aniInfo.get_poster()
             caption = await aniInfo.get_caption()
+            if not caption or not isinstance(caption, str):
+                caption = f"‣ <b>Anime Name :</b> <b><i>{name or 'Unknown'}</i></b>\n\n<i>No caption available.</i>"
+                await rep.report(f"Invalid caption for {name}, using fallback", "warning")
             if poster:
                 post_msg = await bot.send_photo(Var.MAIN_CHANNEL, photo=poster, caption=caption)
             else:
@@ -71,11 +74,12 @@ async def get_animes(name, torrent, force=False):
                 post_msg = await bot.send_message(Var.MAIN_CHANNEL, text=caption)
 
             await asleep(1.5)
-            stat_msg = await sendMessage(Var.MAIN_CHANNEL, f"‣ <b>Anime Name :</b> <b><i>{name}</i></b>\n\n<i>Downloading...</i>")
+            stat_msg = await sendMessage(Var.MAIN_CHANNEL, f"‣ <b>Anime Name :</b> <b><i>{name or 'Unknown'}</i></b>\n\n<i>Downloading...</i>")
             dl = await TorDownloader("./downloads").download(torrent, name)
 
             if not dl or not ospath.exists(dl):
                 await rep.report(f"File Download Incomplete, Try Again", "error")
+                await editMessage(stat_msg, f"‣ <b>Anime Name :</b> <b><i>{name or 'Unknown'}</i></b>\n\n<i>Download Failed.</i>")
                 await stat_msg.delete()
                 return
 
@@ -84,7 +88,11 @@ async def get_animes(name, torrent, force=False):
             ff_queued[post_id] = ffEvent
 
             if ffLock.locked():
-                await editMessage(stat_msg, f"‣ <b>Anime Name :</b> <b><i>{name}</i></b>\n\n<i>Queued to Encode...</i>")
+                text = f"‣ <b>Anime Name :</b> <b><i>{name or 'Unknown'}</i></b>\n\n<i>Queued to Encode...</i>"
+                if not text.strip():
+                    text = "⚠️ Unable to update status: Queuing failed."
+                    await rep.report(f"Empty text detected for stat_msg queue update: {name}", "warning")
+                await editMessage(stat_msg, text)
                 await rep.report("Added Task to Queue...", "info")
 
             await ffQueue.put(post_id)
@@ -103,7 +111,11 @@ async def get_animes(name, torrent, force=False):
                         await rep.report(f"[ERROR] Filename returned None for `{name}` ({qual}) - skipping encode", "error")
                         continue
 
-                    await editMessage(stat_msg, f"‣ <b>Anime Name :</b> <b><i>{name}</i></b>\n\n<i>Ready to Encode...</i>")
+                    text = f"‣ <b>Anime Name :</b> <b><i>{filename}</i></b>\n\n<i>Ready to Encode...</i>"
+                    if not text.strip():
+                        text = f"⚠️ Unable to update status for {qual}: Invalid data."
+                        await rep.report(f"Empty text detected for stat_msg encode update: {name} ({qual})", "warning")
+                    await editMessage(stat_msg, text)
                     await asleep(1.5)
                     await rep.report("Starting Encode...", "info")
 
@@ -111,11 +123,16 @@ async def get_animes(name, torrent, force=False):
 
                     if not out_path or not ospath.exists(out_path):
                         await rep.report("[ERROR] Encoding failed or output not found!", "error")
+                        await editMessage(stat_msg, f"‣ <b>Anime Name :</b> <b><i>{name or 'Unknown'}</i></b>\n\n<i>Encoding Failed.</i>")
                         await stat_msg.delete()
                         return
 
                     await rep.report("Succesfully Compressed. Uploading...", "info")
-                    await editMessage(stat_msg, f"‣ <b>Anime Name :</b> <b><i>{filename}</i></b>\n\n<i>Ready to Upload...</i>")
+                    text = f"‣ <b>Anime Name :</b> <b><i>{filename}</i></b>\n\n<i>Ready to Upload...</i>"
+                    if not text.strip():
+                        text = f"⚠️ Unable to update status for upload: Invalid data."
+                        await rep.report(f"Empty text detected for stat_msg upload update: {name} ({qual})", "warning")
+                    await editMessage(stat_msg, text)
                     await asleep(1.5)
 
                     msg = await TgUploader(stat_msg).upload(out_path, qual)
@@ -128,7 +145,12 @@ async def get_animes(name, torrent, force=False):
                             btns[-1].insert(1, InlineKeyboardButton(f"{btn_formatter[qual]} - {convertBytes(file_size)}", url=link))
                         else:
                             btns.append([InlineKeyboardButton(f"{btn_formatter[qual]} - {convertBytes(file_size)}", url=link)])
-                        await editMessage(post_msg, post_msg.caption.html if post_msg.caption else "", InlineKeyboardMarkup(btns))
+                        # Use original caption with fallback
+                        edit_text = post_msg.caption.html if post_msg.caption and post_msg.caption.html else f"‣ <b>Anime Name :</b> <b><i>{name or 'Unknown'}</i></b>"
+                        if not edit_text.strip():
+                            edit_text = f"⚠️ Unable to update post: No valid caption."
+                            await rep.report(f"Empty caption detected for post_msg update: {name}", "warning")
+                        await editMessage(post_msg, edit_text, InlineKeyboardMarkup(btns))
 
                     await db.saveAnime(ani_id, ep_no, qual, post_id)
                     bot_loop.create_task(extra_utils(msg_id, out_path))
