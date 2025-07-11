@@ -38,6 +38,11 @@ async def get_animes(name, torrent, force=False):
         await aniInfo.load_anilist()
         ani_id, ep_no = aniInfo.adata.get('id'), aniInfo.pdata.get("episode_number")
 
+        # Validate load_anilist result
+        if not ani_id or not ep_no:
+            await rep.report(f"Failed to load AniList data for {name}, ani_id: {ani_id}, ep_no: {ep_no}", "error")
+            return
+
         if ani_id not in ani_cache['ongoing']:
             ani_cache['ongoing'].add(ani_id)
         elif not force:
