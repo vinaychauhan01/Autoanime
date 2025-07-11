@@ -3,7 +3,7 @@ from pyrogram.filters import command, private, user
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from pyrogram.errors import FloodWait, MessageNotModified
 
-from bot import bot, bot_loop, Var, ani_cache
+from bot import bot, bot_loop, Var, ani_cache, current_downloads
 from bot.core.database import db
 from bot.core.func_utils import decode, is_fsubbed, get_fsubs, editMessage, sendMessage, new_task, convertTime, getfeed
 from bot.core.auto_animes import get_animes
@@ -111,3 +111,41 @@ async def add_task(client, message):
     
     ani_task = bot_loop.create_task(get_animes(taskInfo.title, taskInfo.link, True))
     await sendMessage(message, f"<i><b>Task Added Successfully!</b></i>\n\n    • <b>Task Name :</b> {taskInfo.title}\n    • <b>Task Link :</b> {args[1]}")
+
+@bot.on_message(command('skipdownload') & private & user(Var.ADMINS))
+@new_task
+async def skip_download(client, message):
+    args = message.text.split()
+    if len(args) <= 1:
+        return await sendMessage(message, "<b>No torrent name provided to skip</b>")
+    
+    torrent_name = args[1].lower()
+    if 'skip_torrents' not in ani_cache:
+        ani_cache['skip_torrents'] = set()
+    
+    ani_cache['skip_torrents'].add(torrent_name)
+    await sendMessage(message, f"`Successfully skipped torrent: {torrent_name}`\n\n    • **Skipped Torrents:** {', '.join(ani_cache['skip_torrents'])}")
+
+@bot.on_message(command('canceldownload') & private & user(Var.ADMINS))
+@new_task
+async def cancel_download(client, message):
+    args = message.text.split()
+    if len(args) <= 1:
+        return await sendMessage(message, "<b>No torrent name provided to cancel</b>")
+    
+    torrent_name = args[1].lower()
+    if 'current_downloads' not in globals() or not current_downloads:
+        return await sendMessage(message, "<b>No active downloads to cancel</b>")
+    
+    if torrent_name in current_downloads:
+        current_downloads.remove(torrent_name)
+        # Attempt to delete the partially downloaded file (assuming it's in ./downloads)
+        import os
+        file_path = os.path.join("./downloads", torrent_name.replace(" ", "_") + ".torrent")
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            await sendMessage(message, f"`Successfully cancelled download for: {torrent_name}`")
+        else:
+            await sendMessage(message, f"`No file found to cancel for: {torrent_name}, but removed from queue`")
+    else:
+        await sendMessage(message, f"<b>No active download found for: {torrent_name}</b>")
