@@ -31,8 +31,7 @@ ffLock = Lock()
 ffQueue = Queue()
 ff_queued = dict()
 
-# Add current_downloads for tracking ongoing downloads
-current_downloads = set()
+
 
 class Var:
     API_ID, API_HASH, BOT_TOKEN = getenv("API_ID"), getenv("API_HASH"), getenv("BOT_TOKEN")
