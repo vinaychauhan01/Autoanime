@@ -341,9 +341,9 @@ class AniLister:
             kitsu_data = await self.get_kitsu_data()
             if kitsu_data and self.__ani_name.lower() in (kitsu_data.get('title', {}).get('romaji', '').lower() or kitsu_data.get('title', {}).get('english', '').lower() or kitsu_data.get('title', {}).get('native', '').lower()):
                 return kitsu_data
-            # Enhanced fallback if all APIs fail
-            await rep.report(f"All API fallbacks failed for {self.__ani_name}, using minimal fallback", "warning")
-            return {"title": {"romaji": self.__ani_name.split("[", 1)[0].strip()}, "genres": [], "status": "N/A"}
+            # All APIs failed, return None to skip torrent
+            await rep.report(f"All API fallbacks failed for {self.__ani_name}, skipping torrent", "warning")
+            return None
 
 class TextEditor:
     def __init__(self, name):
@@ -359,11 +359,15 @@ class TextEditor:
                 continue
             cache_names.append(ani_name)
             self.adata = await AniLister(ani_name, datetime.now().year).get_anidata()
+            if self.adata is None:  # Check for skip signal
+                await rep.report(f"Skipping torrent for {self.__name} due to no API data", "warning")
+                return False
             if self.adata and any(ani_name.lower() in (self.adata.get('title', {}).get(k, '').lower() or '') for k in ['romaji', 'english', 'native']):
                 break
         if not self.adata or not isinstance(self.adata, dict):
             self.adata = {"id": None, "title": {"romaji": self.__name.split("[", 1)[0].strip()}, "episodes": self.pdata.get("episode_number")}
             await rep.report(f"Using fallback data for {self.__name} due to empty or invalid adata", "warning")
+        return True
 
     @handle_logs
     async def get_id(self):
