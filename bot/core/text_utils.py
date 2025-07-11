@@ -4,6 +4,7 @@ from random import choice
 from asyncio import sleep as asleep
 from aiohttp import ClientSession, ClientError, ContentTypeError
 from anitopy import parse
+from xml.etree import ElementTree as ET
 
 from bot import Var, bot
 from .ffencoder import ffargs
@@ -14,6 +15,7 @@ CAPTION_FORMAT = """
 <b>㊂ <i>{title}</i></b>
 <b>╭┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅</b>
 <b>⊙</b> <i>Genres:</i> <i>{genres}</i>
+<b>⊙</b> <i>Season:</i> <i>{season}</i>
 <b>⊙</b> <i>Status:</i> <i>RELEASING</i>
 <b>⊙</b> <i>Source:</i> <i>Subsplease</i>
 <b>⊙</b> <i>Episode:</i> <i>{ep_no}</i>
@@ -27,9 +29,9 @@ CAPTION_FORMAT = """
 
 GENRES_EMOJI = {
     "Action": "👊", "Adventure": choice(['🪂', '🧗‍♀']), "Comedy": "🤣",
-    "Drama": " 🎭", "Ecchi": choice(['💋', '🥵']), "Fantasy": choice(['🧞', '🧞‍♂', '🧞‍♀', '🌗']),
-    "Hentai": "🔞", "Horror": "☠", "Mahou Shoujo": "☯", "Mecha": "🤖", "Music": "🎸",
-    "Mystery": "🔮", "Psychological": "♟", "Romance": "💞", "Sci-Fi": "🛸",
+    "Drama": " 🎭", "Ecchi": choice(['💋', '🥵']), "Fantasy": choice(['🧞', '🧞‍ atualmente', '🧞‍♀', '🌗']),
+    "Hentai": "🔞", "Horror": "☠", "Mahou Shoujo": "☯", "Mecha": "🤖", "Mystery": "🔮",
+    "Psychological": "♟", "Romance": "💞", "Sci-Fi": "🛸",
     "Slice of Life": choice(['☘', '🍁']), "Sports": "⚽️", "Supernatural": "🫧", "Thriller": choice(['🥶', '🔪', '🤯'])
 }
 
@@ -201,6 +203,103 @@ class AniLister:
             await rep.report(f"Kitsu Fallback Error: {e}", "error")
             return {}
 
+    @handle_logs
+    async def get_jikan_data(self):
+        jikan_api = f"https://api.jikan.moe/v4/anime?q={self.__ani_name}&limit=1"
+        try:
+            async with ClientSession() as sess:
+                async with sess.get(jikan_api, timeout=10) as resp:
+                    if resp.status != 200:
+                        return {}
+                    data = await resp.json()
+                    if not data.get("data"):
+                        return {}
+                    anime = data["data"][0]
+                    return {
+                        "title": {
+                            "romaji": anime.get("title"),
+                            "english": anime.get("title_english"),
+                            "native": anime.get("title_japanese")
+                        },
+                        "genres": [g["name"] for g in anime.get("genres", [])],
+                        "episodes": anime.get("episodes"),
+                        "status": anime.get("status"),
+                        "description": anime.get("synopsis"),
+                        "coverImage": {"large": anime.get("images", {}).get("jpg", {}).get("large_image_url")},
+                        "startDate": {
+                            "year": anime.get("aired", {}).get("from", "").split("-")[0] if anime.get("aired", {}).get("from") else None,
+                            "month": anime.get("aired", {}).get("from", "").split("-")[1] if anime.get("aired", {}).get("from") else None,
+                            "day": anime.get("aired", {}).get("from", "").split("-")[2][:2] if anime.get("aired", {}).get("from") else None
+                        },
+                        "averageScore": anime.get("score", None)
+                    }
+        except Exception as e:
+            await rep.report(f"Jikan Fallback Error: {e}", "error")
+            return {}
+
+    @handle_logs
+    async def get_ann_data(self):
+        ann_api = f"https://www.animenewsnetwork.com/encyclopedia/reports.xml?id=155&type=anime&name={self.__ani_name}"
+        try:
+            async with ClientSession() as sess:
+                async with sess.get(ann_api, timeout=10) as resp:
+                    if resp.status != 200:
+                        return {}
+                    xml_data = await resp.text()
+                    root = ET.fromstring(xml_data)
+                    anime_data = {}
+                    for item in root.findall(".//item"):
+                        title = item.find("title").text
+                        if self.__ani_name.lower() in title.lower():
+                            release_date = item.find("release_date").text if item.find("release_date") else None
+                            start_date = {}
+                            if release_date:
+                                try:
+                                    start_year, start_month, start_day = map(int, release_date.split("-"))
+                                    start_date = {"year": start_year, "month": start_month, "day": start_day}
+                                except:
+                                    pass
+                            anime_data = {
+                                "title": {"romaji": title},
+                                "description": item.find("description").text or "N/A",
+                                "genres": item.find("genres").text.split(", ") if item.find("genres") else [],
+                                "coverImage": {"large": item.find("image").text} if item.find("image") else {},
+                                "startDate": start_date
+                            }
+                            break
+                    return anime_data
+        except Exception as e:
+            await rep.report(f"ANN Fallback Error: {e}", "error")
+            return {}
+
+    @handle_logs
+    async def get_season(self, anime_data: dict) -> str:
+        """Detect the anime season from the provided data."""
+        # AniList provides direct season and year
+        if anime_data.get("season") and anime_data.get("seasonYear"):
+            return f"{anime_data['season'].capitalize()} {anime_data['seasonYear']}"
+
+        # Fallback to date-based season detection
+        start_date = anime_data.get("startDate", {})
+        year = start_date.get("year")
+        month = start_date.get("month")
+
+        if year and month:
+            # Standard season mapping: Winter (Jan-Mar), Spring (Apr-Jun), Summer (Jul-Sep), Fall (Oct-Dec)
+            if 1 <= month <= 3:
+                season = "Winter"
+            elif 4 <= month <= 6:
+                season = "Spring"
+            elif 7 <= month <= 9:
+                season = "Summer"
+            elif 10 <= month <= 12:
+                season = "Fall"
+            else:
+                season = "N/A"
+            return f"{season} {year}"
+
+        return "N/A"
+
     async def get_anidata(self):
         res_code, resp_json, res_heads = await self.post_data()
         while res_code == 404 and self.__ani_year > 2020:
@@ -225,7 +324,15 @@ class AniLister:
             return await self.get_anidata()
         else:
             await rep.report(f"AniList API Error: {res_code}, trying Kitsu fallback...", "warning", log=False)
-            return await self.get_kitsu_data()
+            kitsu_data = await self.get_kitsu_data()
+            if kitsu_data:
+                return kitsu_data
+            await rep.report(f"Kitsu API failed, trying Jikan fallback...", "warning", log=False)
+            jikan_data = await self.get_jikan_data()
+            if jikan_data:
+                return jikan_data
+            await rep.report(f"Jikan API failed, trying ANN fallback...", "warning", log=False)
+            return await self.get_ann_data()
 
 class TextEditor:
     def __init__(self, name):
@@ -267,11 +374,20 @@ class TextEditor:
     async def get_poster(self):
         if anime_id := await self.get_id():
             return f"https://img.anili.st/media/{anime_id}"
-
         kitsu_data = await AniLister(self.__name, datetime.now().year).get_kitsu_data()
         if kitsu_data and (poster := kitsu_data.get("coverImage", {}).get("large")):
             return poster
-
+        jikan_data = await AniLister(self.__name, datetime.now().year).get_jikan_data()
+        if jikan_data and (poster := jikan_data.get("coverImage", {}).get("large")):
+            return poster
+        try:
+            async with ClientSession() as sess:
+                async with sess.get("https://api.waifu.pics/sfw/waifu") as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        return data.get("url", "https://telegra.ph/file/112ec08e59e73b6189a20.jpg")
+        except Exception as e:
+            await rep.report(f"Waifu.pics Fallback Error: {e}", "error")
         return "https://telegra.ph/file/112ec08e59e73b6189a20.jpg"
 
     @handle_logs
@@ -291,11 +407,15 @@ class TextEditor:
         ed = self.adata.get('endDate', {})
         enddate = f"{month_name[ed['month']]} {ed['day']}, {ed['year']}" if ed.get('day') and ed.get('year') else ""
         titles = self.adata.get("title", {})
+        # Get season using AniLister's get_season method
+        lister = AniLister(self.__name, datetime.now().year)
+        season = await lister.get_season(self.adata)
 
         return CAPTION_FORMAT.format(
             title=titles.get('english') or titles.get('romaji') or titles.get('native'),
             form=self.adata.get("format") or "N/A",
             genres=", ".join(f"{GENRES_EMOJI[x]} #{x.replace(' ', '_').replace('-', '_')}" for x in (self.adata.get('genres') or [])),
+            season=season,
             avg_score=f"{sc}%" if (sc := self.adata.get('averageScore')) else "N/A",
             status=self.adata.get("status") or "N/A",
             start_date=startdate or "N/A",
