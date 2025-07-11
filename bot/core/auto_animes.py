@@ -37,10 +37,9 @@ async def get_animes(name, torrent, force=False):
         aniInfo = TextEditor(name)
         # Check if load_anilist succeeds, skip if it returns False
         if not await aniInfo.load_anilist():
-            # Workaround: Log internally without sending to log channel
-            print(f"Skipping torrent download for {name} due to no API data")  # Internal console log
-            # Optionally, use rep.report with a custom filter if available
-            # await rep.report(f"Skipping torrent download for {name} due to no API data", "warning", log=False)
+            # Alternative workaround: Avoid rep.report and log internally
+            import logging
+            logging.warning(f"Skipping torrent download for {name} due to no API data")
             return
 
         # Check and fallback if adata or pdata is None after successful load_anilist
