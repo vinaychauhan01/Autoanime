@@ -118,7 +118,7 @@ query ($id: Int, $search: String, $seasonYear: Int) {
 class AniLister:
     def __init__(self, anime_name: str, year: int) -> None:
         self.__api = "https://graphql.anilist.co"
-        self.__ani_name = anime_name
+        self.__ani_name = anime_name or "Unknown Anime"  # Fallback if anime_name is None
         self.__ani_year = year
         self.__vars = {'search': self.__ani_name, 'seasonYear': self.__ani_year}
 
@@ -317,7 +317,7 @@ class AniLister:
 
         if res_code == 200:
             data = resp_json.get('data', {}).get('Media', {})
-            if data and any(self.__ani_name.lower() in (data.get('title', {}).get(k, '').lower() or '') for k in ['romaji', 'english', 'native']):
+            if data and any((self.__ani_name or "").lower() in (data.get('title', {}).get(k, '') or "").lower() for k in ['romaji', 'english', 'native']):
                 return data
         elif res_code == 429:
             f_timer = int(res_heads['Retry-After'])
@@ -331,19 +331,19 @@ class AniLister:
         else:
             await rep.report(f"AniList API Error: {res_code}, trying Jikan fallback...", "warning", log=False)
             jikan_data = await self.get_jikan_data()
-            if jikan_data and self.__ani_name.lower() in (jikan_data.get('title', {}).get('romaji', '').lower() or jikan_data.get('title', {}).get('english', '').lower() or jikan_data.get('title', {}).get('native', '').lower()):
+            if jikan_data and (self.__ani_name or "").lower() in (jikan_data.get('title', {}).get('romaji', '') or "").lower() or (jikan_data.get('title', {}).get('english', '') or "").lower() or (jikan_data.get('title', {}).get('native', '') or "").lower():
                 return jikan_data
             await rep.report(f"Jikan API failed or mismatch, trying ANN fallback...", "warning", log=False)
             ann_data = await self.get_ann_data()
-            if ann_data and self.__ani_name.lower() in (ann_data.get('title', {}).get('romaji', '').lower() or ''):
+            if ann_data and (self.__ani_name or "").lower() in (ann_data.get('title', {}).get('romaji', '') or "").lower():
                 return ann_data
             await rep.report(f"ANN API failed or mismatch, trying Kitsu fallback...", "warning", log=False)
             kitsu_data = await self.get_kitsu_data()
-            if kitsu_data and self.__ani_name.lower() in (kitsu_data.get('title', {}).get('romaji', '').lower() or kitsu_data.get('title', {}).get('english', '').lower() or kitsu_data.get('title', {}).get('native', '').lower()):
+            if kitsu_data and (self.__ani_name or "").lower() in (kitsu_data.get('title', {}).get('romaji', '') or "").lower() or (kitsu_data.get('title', {}).get('english', '') or "").lower() or (kitsu_data.get('title', {}).get('native', '') or "").lower():
                 return kitsu_data
             # Enhanced fallback if all APIs fail
-            await rep.report(f"All API fallbacks failed for {self.__ani_name}, using minimal fallback", "warning")
-            return {"title": {"romaji": self.__ani_name.split("[", 1)[0].strip()}, "genres": [], "status": "N/A"}
+            await rep.report(f"All API fallbacks failed for {self.__ani_name or 'Unknown'}, using minimal fallback", "warning")
+            return {"title": {"romaji": self.__ani_name or "Unknown Anime"}, "genres": [], "status": "N/A"}
 
 class TextEditor:
     def __init__(self, name):
@@ -362,7 +362,7 @@ class TextEditor:
             if self.adata and any(ani_name.lower() in (self.adata.get('title', {}).get(k, '').lower() or '') for k in ['romaji', 'english', 'native']):
                 break
         if not self.adata or not isinstance(self.adata, dict):
-            self.adata = {"id": None, "title": {"romaji": self.__name.split("[", 1)[0].strip()}, "episodes": self.pdata.get("episode_number")}
+            self.adata = {"id": None, "title": {"romaji": self.__name.split("[", 1)[0].strip() or "Unknown Anime"}, "episodes": self.pdata.get("episode_number")}
             await rep.report(f"Using fallback data for {self.__name} due to empty or invalid adata", "warning")
 
     @handle_logs
@@ -380,7 +380,7 @@ class TextEditor:
         if not no_y and self.pdata.get("anime_year"):
             anime_name = anime_name.split(f" {self.pdata.get('anime_year')}", 1)[0]
         anime_name = " ".join(word for word in anime_name.split() if not any(char in word for char in "[]()"))
-        return anime_name or self.__name.split("[", 1)[0].strip()
+        return anime_name or self.__name.split("[", 1)[0].strip() or "Unknown Anime"
 
     @handle_logs
     async def get_poster(self):
