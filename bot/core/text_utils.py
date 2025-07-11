@@ -408,27 +408,32 @@ class TextEditor:
             return f"""[S{anime_season}-{'E'+str(self.pdata.get('episode_number')) if self.pdata.get('episode_number') else ''}] {titles.get('english') or titles.get('romaji') or titles.get('native')} {'['+qual+'p]' if qual else ''} {'['+codec.upper()+'] ' if codec else ''}{'['+lang+']'} {Var.BRAND_UNAME}.mkv"""
 
     @handle_logs
-    async def get_caption(self):
-        sd = self.adata.get('startDate', {})
-        startdate = f"{month_name[sd['month']]} {sd['day']}, {sd['year']}" if sd.get('day') and sd.get('year') else ""
-        ed = self.adata.get('endDate', {})
-        enddate = f"{month_name[ed['month']]} {ed['day']}, {ed['year']}" if ed.get('day') and ed.get('year') else ""
-        titles = self.adata.get("title", {})
-        # Get season number using AniLister's get_season method, passing parsed_data
-        lister = AniLister(self.__name, datetime.now().year)
-        season = await lister.get_season(self.adata, parsed_data=self.pdata)
+async def get_caption(self):
+    sd = self.adata.get('startDate', {})
+    # Convert month to integer and validate all fields before accessing month_name
+    startdate = (f"{month_name[int(sd['month'])]} {sd['day']}, {sd['year']}" 
+                 if sd.get('day') and sd.get('month') and sd.get('year') 
+                 and str(sd['month']).isdigit() else "")
+    ed = self.adata.get('endDate', {})
+    enddate = (f"{month_name[int(ed['month'])]} {ed['day']}, {ed['year']}" 
+               if ed.get('day') and ed.get('month') and ed.get('year') 
+               and str(ed['month']).isdigit() else "")
+    titles = self.adata.get("title", {})
+    # Get season number using AniLister's get_season method, passing parsed_data
+    lister = AniLister(self.__name, datetime.now().year)
+    season = await lister.get_season(self.adata, parsed_data=self.pdata)
 
-        return CAPTION_FORMAT.format(
-            title=titles.get('english') or titles.get('romaji') or titles.get('native'),
-            form=self.adata.get("format") or "N/A",
-            genres=", ".join(f"{GENRES_EMOJI[x]} #{x.replace(' ', '_').replace('-', '_')}" for x in (self.adata.get('genres') or [])),
-            season=season,
-            avg_score=f"{sc}%" if (sc := self.adata.get('averageScore')) else "N/A",
-            status=self.adata.get("status") or "N/A",
-            start_date=startdate or "N/A",
-            end_date=enddate or "N/A",
-            t_eps=self.adata.get("episodes") or "N/A",
-            plot=(desc if (desc := self.adata.get("description") or "N/A") and len(desc) < 200 else desc[:200] + "..."),
-            ep_no=self.pdata.get("episode_number"),
-            cred=Var.BRAND_UNAME,
-        )
+    return CAPTION_FORMAT.format(
+        title=titles.get('english') or titles.get('romaji') or titles.get('native'),
+        form=self.adata.get("format") or "N/A",
+        genres=", ".join(f"{GENRES_EMOJI[x]} #{x.replace(' ', '_').replace('-', '_')}" for x in (self.adata.get('genres') or [])),
+        season=season,
+        avg_score=f"{sc}%" if (sc := self.adata.get('averageScore')) else "N/A",
+        status=self.adata.get("status") or "N/A",
+        start_date=startdate or "N/A",
+        end_date=enddate or "N/A",
+        t_eps=self.adata.get("episodes") or "N/A",
+        plot=(desc if (desc := self.adata.get("description") or "N/A") and len(desc) < 200 else desc[:200] + "..."),
+        ep_no=self.pdata.get("episode_number"),
+        cred=Var.BRAND_UNAME,
+    )
