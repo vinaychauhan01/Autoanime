@@ -57,7 +57,11 @@ async def get_animes(name, torrent, force=False):
             await rep.report(f"New Anime Torrent Found!\n\n{name}", "info")
             poster = await aniInfo.get_poster()
             caption = await aniInfo.get_caption()
-            post_msg = await bot.send_photo(Var.MAIN_CHANNEL, photo=poster, caption=caption)
+            if poster:
+                post_msg = await bot.send_photo(Var.MAIN_CHANNEL, photo=poster, caption=caption)
+            else:
+                await rep.report(f"No valid poster found for {name}, sending caption only", "warning")
+                post_msg = await bot.send_message(Var.MAIN_CHANNEL, text=caption)
 
             await asleep(1.5)
             stat_msg = await sendMessage(Var.MAIN_CHANNEL, f"‣ <b>Anime Name :</b> <b><i>{name}</i></b>\n\n<i>Downloading...</i>")
