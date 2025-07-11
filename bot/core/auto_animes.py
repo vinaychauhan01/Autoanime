@@ -6,6 +6,7 @@ from traceback import format_exc
 from base64 import urlsafe_b64encode
 from time import time
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+import logging
 
 from bot import bot, bot_loop, Var, ani_cache, ffQueue, ffLock, ff_queued
 from .tordownload import TorDownloader
@@ -15,6 +16,10 @@ from .text_utils import TextEditor
 from .ffencoder import FFEncoder
 from .tguploader import TgUploader
 from .reporter import rep
+
+# Configure a basic logger that only writes to console
+logging.basicConfig(level=logging.WARNING)
+logger = logging.getLogger(__name__)
 
 btn_formatter = {
     '1080': '𝟭𝟬𝟴𝟬𝗽',
@@ -37,9 +42,8 @@ async def get_animes(name, torrent, force=False):
         aniInfo = TextEditor(name)
         # Check if load_anilist succeeds, skip if it returns False
         if not await aniInfo.load_anilist():
-            # Alternative workaround: Avoid rep.report and log internally
-            import logging
-            logging.warning(f"Skipping torrent download for {name} due to no API data")
+            # Use custom logger to avoid channel
+            logger.warning(f"Skipping torrent download for {name} due to no API data")
             return
 
         # Check and fallback if adata or pdata is None after successful load_anilist
