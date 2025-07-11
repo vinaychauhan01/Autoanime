@@ -36,12 +36,14 @@ async def get_animes(name, torrent, force=False):
     try:
         aniInfo = TextEditor(name)
         await aniInfo.load_anilist()
+        # Check and fallback if adata or pdata is None
+        if aniInfo.adata is None or not isinstance(aniInfo.adata, dict):
+            aniInfo.adata = {"id": None, "title": {"romaji": name.split("[", 1)[0].strip()}}
+            await rep.report(f"adata is None or invalid for {name}, using fallback", "warning")
+        if aniInfo.pdata is None or not isinstance(aniInfo.pdata, dict):
+            aniInfo.pdata = {"episode_number": None}
+            await rep.report(f"pdata is None or invalid for {name}, using fallback", "warning")
         ani_id, ep_no = aniInfo.adata.get('id'), aniInfo.pdata.get("episode_number")
-
-        # Validate load_anilist result
-        if not ani_id or not ep_no:
-            await rep.report(f"Failed to load AniList data for {name}, ani_id: {ani_id}, ep_no: {ep_no}", "error")
-            return
 
         if ani_id not in ani_cache['ongoing']:
             ani_cache['ongoing'].add(ani_id)
