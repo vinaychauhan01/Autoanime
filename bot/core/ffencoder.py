@@ -32,28 +32,31 @@ class FFEncoder:
         self.__prog_file = 'prog.txt'
         self.__start_time = time()
 
-    async def progress(self):
-        self.__total_time = await mediainfo(self.dl_path, get_duration=True)
-        if isinstance(self.__total_time, str):
-            self.__total_time = 1.0
+async def progress(self):
+    self.__total_time = await mediainfo(self.dl_path, get_duration=True)
+    if isinstance(self.__total_time, str) or self.__total_time <= 0:
+        self.__total_time = await mediainfo(self.dl_path, get_duration=True)  # एक बार फिर कोशिश
+        if isinstance(self.__total_time, str) or self.__total_time <= 0:
+            LOGS.warning(f"{self.__name} के लिए टोटल टाइम गलत है। 1440s का बैकअप यूज कर रहे हैं।")
+            self.__total_time = 1440.0  # अगर फिर भी गलती, तो 24 मिनट का बैकअप
 
-        while not (self.__proc is None or self.is_cancelled):
-            async with aiopen(self.__prog_file, 'r+') as p:
-                text = await p.read()
+    while not (self.__proc is None or self.is_cancelled):
+        async with aiopen(self.__prog_file, 'r+') as p:
+            text = await p.read()
 
-            if text:
-                time_done = floor(int(t[-1]) / 1000000) if (t := findall("out_time_ms=(\d+)", text)) else 1
-                ensize = int(s[-1]) if (s := findall(r"total_size=(\d+)", text)) else 0
+        if text:
+            time_done = floor(int(t[-1]) / 1000000) if (t := findall("out_time_ms=(\d+)", text)) else 1
+            ensize = int(s[-1]) if (s := findall(r"total_size=(\d+)", text)) else 0
 
-                diff = time() - self.__start_time
-                speed = ensize / max(diff, 1)
-                percent = round((time_done / self.__total_time) * 100, 2)
-                tsize = ensize / (max(percent, 0.01) / 100)
-                eta = (tsize - ensize) / max(speed, 0.01)
+            diff = time() - self.__start_time
+            speed = ensize / max(diff, 1)
+            percent = min(round((time_done / self.__total_time) * 100, 2), 100)  # 100% से ज्यादा न हो
+            tsize = ensize / (max(percent, 0.01) / 100)
+            eta = (tsize - ensize) / max(speed, 0.01)
 
-                bar = floor(percent / 8) * "█" + (12 - floor(percent / 8)) * "▒"
+            bar = floor(percent / 8) * "█" + (12 - floor(percent / 8)) * "▒"
 
-                progress_str = f"""<blockquote>‣ <b>Anime Name :</b> <b><i>{self.__name}</i></b></blockquote>
+            progress_str = f"""<blockquote>‣ <b>Anime Name :</b> <b><i>{self.__name}</i></b></blockquote>
 <blockquote>‣ <b>Status :</b> <i>Encoding</i>
     <code>[{bar}]</code> {percent}%</blockquote> 
 <blockquote>   ‣ <b>Size :</b> {convertBytes(ensize)} out of ~ {convertBytes(tsize)}
@@ -62,12 +65,13 @@ class FFEncoder:
     ‣ <b>Time Left :</b> {convertTime(eta)}</blockquote>
 <blockquote>‣ <b>File(s) Encoded:</b> <code>{Var.QUALS.index(self.__qual)} / {len(Var.QUALS)}</code></blockquote>"""
 
-                await editMessage(self.message, progress_str)
+            await editMessage(self.message, progress_str)
+            LOGS.info(f"प्रोग्रेस - टोटल टाइम: {self.__total_time}, टाइम डन: {time_done}, प्रतिशत: {percent}")  # डिबगिंग लॉग
 
-                if (prog := findall(r"progress=(\w+)", text)) and prog[-1] == 'end':
-                    break
+            if (prog := findall(r"progress=(\w+)", text)) and prog[-1] == 'end':
+                break
 
-            await asleep(8)
+        await asleep(8)
 
     async def start_encode(self):
         try:
