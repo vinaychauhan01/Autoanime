@@ -1,13 +1,13 @@
-from asyncio import sleep as asleep, Event
+from asyncio import sleep as asleep, gather
 from pyrogram.filters import command, private, user
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from pyrogram.errors import FloodWait, MessageNotModified
 
 from bot import bot, bot_loop, Var, ani_cache
 from bot.core.database import db
-from bot.core.func_utils import decode, is_fsubbed, get_fsubs, editMessage, sendMessage, new_task, convertTime, getfeed, TASKS
+from bot.core.func_utils import decode, is_fsubbed, get_fsubs, editMessage, sendMessage, new_task, convertTime, getfeed
 from bot.core.auto_animes import get_animes
 from bot.core.reporter import rep
-
 
 @bot.on_message(command('start') & private)
 @new_task
@@ -31,34 +31,32 @@ async def start_msg(client, message):
                 btns[-1].insert(1, InlineKeyboardButton(bt, url=link))
             else:
                 btns.append([InlineKeyboardButton(bt, url=link)])
-        smsg = Var.START_MSG.format(
-            first_name=from_user.first_name,
-            last_name=from_user.first_name,
-            mention=from_user.mention,
-            user_id=from_user.id
-        )
+        smsg = Var.START_MSG.format(first_name=from_user.first_name,
+                                    last_name=from_user.first_name,
+                                    mention=from_user.mention, 
+                                    user_id=from_user.id)
         if Var.START_PHOTO:
             await message.reply_photo(
-                photo=Var.START_PHOTO,
+                photo=Var.START_PHOTO, 
                 caption=smsg,
-                reply_markup=InlineKeyboardMarkup(btns) if btns else None
+                reply_markup=InlineKeyboardMarkup(btns) if len(btns) != 0 else None
             )
         else:
-            await sendMessage(message, smsg, InlineKeyboardMarkup(btns) if btns else None)
+            await sendMessage(message, smsg, InlineKeyboardMarkup(btns) if len(btns) != 0 else None)
         return
-
     try:
         arg = (await decode(txtargs[1])).split('-')
     except Exception as e:
         await rep.report(f"User : {uid} | Error : {str(e)}", "error")
-        return await editMessage(temp, "<b>Input Link Code Decode Failed !</b>")
-
+        await editMessage(temp, "<b>Input Link Code Decode Failed !</b>")
+        return
     if len(arg) == 2 and arg[0] == 'get':
         try:
             fid = int(int(arg[1]) / abs(int(Var.FILE_STORE)))
         except Exception as e:
             await rep.report(f"User : {uid} | Error : {str(e)}", "error")
-            return await editMessage(temp, "<b>Input Link Code is Invalid !</b>")
+            await editMessage(temp, "<b>Input Link Code is Invalid !</b>")
+            return
         try:
             msg = await client.get_messages(Var.FILE_STORE, message_ids=fid)
             if msg.empty:
@@ -77,34 +75,29 @@ async def start_msg(client, message):
     else:
         await editMessage(temp, "<b>Input Link is Invalid for Usage !</b>")
 
-
 @bot.on_message(command('pause') & private & user(Var.ADMINS))
 async def pause_fetch(client, message):
     ani_cache['fetch_animes'] = False
     await sendMessage(message, "`Successfully Paused Fetching Animes...`")
 
-
 @bot.on_message(command('resume') & private & user(Var.ADMINS))
-async def resume_fetch(client, message):
+async def pause_fetch(client, message):
     ani_cache['fetch_animes'] = True
     await sendMessage(message, "`Successfully Resumed Fetching Animes...`")
-
 
 @bot.on_message(command('log') & private & user(Var.ADMINS))
 @new_task
 async def _log(client, message):
     await message.reply_document("log.txt", quote=True)
 
-
 @bot.on_message(command('addlink') & private & user(Var.ADMINS))
 @new_task
-async def add_link(client, message):
+async def add_task(client, message):
     if len(args := message.text.split()) <= 1:
         return await sendMessage(message, "<b>No Link Found to Add</b>")
 
     Var.RSS_ITEMS.append(args[0])
-    return await sendMessage(message, f"`Global Link Added Successfully!`\n\n    • **All Link(s) :** {', '.join(Var.RSS_ITEMS)[:-2]}")
-
+    req_msg = await sendMessage(message, f"`Global Link Added Successfully!`\n\n    • **All Link(s) :** {', '.join(Var.RSS_ITEMS)[:-2]}")
 
 @bot.on_message(command('addtask') & private & user(Var.ADMINS))
 @new_task
@@ -116,38 +109,5 @@ async def add_task(client, message):
     if not (taskInfo := await getfeed(args[1], index)):
         return await sendMessage(message, "<b>No Task Found to Add for the Provided Link</b>")
 
-    uid = message.from_user.id
-
-    # Cancel old task if running
-    if uid in TASKS:
-        TASKS[uid].cancel()
-        TASKS.pop(uid, None)
-        if uid in Var.CANCEL_EVENTS:
-            Var.CANCEL_EVENTS[uid].set()
-            Var.CANCEL_EVENTS.pop(uid)
-
-    # Create cancel event for this user
-    cancel_event = Event()
-    Var.CANCEL_EVENTS[uid] = cancel_event
-
-    task = bot_loop.create_task(get_animes(taskInfo.title, taskInfo.link, True, cancel_event))
-    TASKS[uid] = task
-
-    await sendMessage(
-        message,
-        f"<i><b>Task Added Successfully!</b></i>\n\n    • <b>Task Name :</b> {taskInfo.title}\n    • <b>Task Link :</b> {args[1]}"
-    )
-
-
-@bot.on_message(command('cancel') & private & user(Var.ADMINS))
-async def cancel_task(client, message):
-    uid = message.from_user.id
-    if uid in TASKS:
-        TASKS[uid].cancel()
-        TASKS.pop(uid, None)
-        if uid in Var.CANCEL_EVENTS:
-            Var.CANCEL_EVENTS[uid].set()
-            Var.CANCEL_EVENTS.pop(uid)
-        await sendMessage(message, "❌ Encoding/Fetch Task Cancelled Successfully.")
-    else:
-        await sendMessage(message, "🚫 No Active Task Found.")
+    ani_task = bot_loop.create_task(get_animes(taskInfo.title, taskInfo.link, True))
+    await sendMessage(message, f"<i><b>Task Added Successfully!</b></i>\n\n    • <b>Task Name :</b> {taskInfo.title}\n    • <b>Task Link :</b> {args[1]}")
