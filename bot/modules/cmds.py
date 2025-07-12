@@ -5,7 +5,7 @@ from pyrogram.errors import FloodWait, MessageNotModified
 
 from bot import bot, bot_loop, Var, ani_cache
 from bot.core.database import db
-from bot.core.func_utils import decode, is_fsubbed, get_fsubs, editMessage, sendMessage, new_task, convertTime, getfeed
+from bot.core.func_utils import decode, is_fsubbed, get_fsubs, editMessage, sendMessage, new_task, convertTime, getfeed, TASKS
 from bot.core.auto_animes import get_animes
 from bot.core.reporter import rep
 
@@ -109,5 +109,25 @@ async def add_task(client, message):
     if not (taskInfo := await getfeed(args[1], index)):
         return await sendMessage(message, "<b>No Task Found to Add for the Provided Link</b>")
 
+    uid = message.from_user.id
+
+    # Cancel previous task if running
+    if uid in TASKS:
+        TASKS[uid].cancel()
+        TASKS.pop(uid, None)
+
     ani_task = bot_loop.create_task(get_animes(taskInfo.title, taskInfo.link, True))
+    TASKS[uid] = ani_task
+
     await sendMessage(message, f"<i><b>Task Added Successfully!</b></i>\n\n    • <b>Task Name :</b> {taskInfo.title}\n    • <b>Task Link :</b> {args[1]}")
+
+@bot.on_message(command('cancel') & private & user(Var.ADMINS))
+async def cancel_task(client, message):
+    uid = message.from_user.id
+    if uid in TASKS:
+        task = TASKS[uid]
+        task.cancel()
+        TASKS.pop(uid, None)
+        await sendMessage(message, "❌ Encoding/Fetch Task Cancelled Successfully.")
+    else:
+        await sendMessage(message, "🚫 No Active Task Found.")
