@@ -11,17 +11,17 @@ from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from bot import bot, bot_loop, Var, ani_cache, ffQueue, ffLock, ff_queued
 from .tordownload import TorDownloader
 from .database import db
-from .func_utils import getfeed, encode, editMessage, sendMessage, convertBytes
+from .func_utils import getfeed, encode, editMessage, sendMessage, convertBytes, TASKS
 from .text_utils import TextEditor
 from .ffencoder import FFEncoder
 from .tguploader import TgUploader
 from .reporter import rep
 
 btn_formatter = {
-    '1080':'𝟭𝟬𝟴𝟬𝗽', 
-    '720':'𝟳𝟮𝟬𝗽',
-    '480':'𝟰𝟴𝟬𝗽',
-    '360':'𝟯𝟲𝟬𝗽'
+    '1080': '𝟭𝟬𝟴𝟬𝗽',
+    '720': '𝟳𝟮𝟬𝗽',
+    '480': '𝟰𝟴𝟬𝗽',
+    '360': '𝟯𝟲𝟬𝗽'
 }
 
 async def fetch_animes():
@@ -32,6 +32,7 @@ async def fetch_animes():
             for link in Var.RSS_ITEMS:
                 if (info := await getfeed(link, 0)):
                     bot_loop.create_task(get_animes(info.title, info.link))
+
 
 async def get_animes(name, torrent, force=False):
     try:
@@ -44,8 +45,8 @@ async def get_animes(name, torrent, force=False):
             return
         if not force and ani_id in ani_cache['completed']:
             return
-        if force or (not (ani_data := await db.getAnime(ani_id)) \
-            or (ani_data and not (qual_data := ani_data.get(ep_no))) \
+        if force or (not (ani_data := await db.getAnime(ani_id))
+            or (ani_data and not (qual_data := ani_data.get(ep_no)))
             or (ani_data and qual_data and not all(qual for qual in qual_data.values()))):
 
             if "[Batch]" in name:
@@ -58,9 +59,8 @@ async def get_animes(name, torrent, force=False):
                 photo=await aniInfo.get_poster(),
                 caption=await aniInfo.get_caption()
             )
-            #post_msg = await sendMessage(Var.MAIN_CHANNEL, (await aniInfo.get_caption()).format(await aniInfo.get_poster()), invert_media=True)
 
-            await asleep(1.5)
+            await asyncio.sleep(1.5)
             stat_msg = await sendMessage(Var.MAIN_CHANNEL, f"‣ <b>Anime Name :</b> <b><i>{name}</i></b>\n\n<i>Downloading...</i>")
             dl = await TorDownloader("./downloads").download(torrent, name)
             if not dl or not ospath.exists(dl):
@@ -83,7 +83,7 @@ async def get_animes(name, torrent, force=False):
                 filename = await aniInfo.get_upname(qual)
                 await editMessage(stat_msg, f"‣ <b>Anime Name :</b> <b><i>{name}</i></b>\n\n<i>Ready to Encode...</i>")
 
-                await asleep(1.5)
+                await asyncio.sleep(1.5)
                 await rep.report("Starting Encode...", "info")
                 try:
                     out_path = await FFEncoder(stat_msg, dl, filename, qual).start_encode()
@@ -95,7 +95,7 @@ async def get_animes(name, torrent, force=False):
                 await rep.report("Succesfully Compressed Now Going To Upload...", "info")
 
                 await editMessage(stat_msg, f"‣ <b>Anime Name :</b> <b><i>{filename}</i></b>\n\n<i>Ready to Upload...</i>")
-                await asleep(1.5)
+                await asyncio.sleep(1.5)
                 try:
                     msg = await TgUploader(stat_msg).upload(out_path, qual)
                 except Exception as e:
@@ -117,13 +117,26 @@ async def get_animes(name, torrent, force=False):
 
                 await db.saveAnime(ani_id, ep_no, qual, post_id)
                 bot_loop.create_task(extra_utils(msg_id, out_path))
-            ffLock.release()
 
+            ffLock.release()
             await stat_msg.delete()
             await aioremove(dl)
+
         ani_cache['completed'].add(ani_id)
-    except Exception as error:
+
+    except asyncio.CancelledError:
+        await rep.report(f"🚫 Task Cancelled for: {name}", "warning")
+        return
+
+    except Exception:
         await rep.report(format_exc(), "error")
+
+    finally:
+        # Clean up completed/cancelled tasks
+        for uid, task in list(TASKS.items()):
+            if task.done() or task.cancelled():
+                TASKS.pop(uid, None)
+
 
 async def extra_utils(msg_id, out_path):
     msg = await bot.get_messages(Var.FILE_STORE, message_ids=msg_id)
