@@ -116,8 +116,8 @@ async def add_task(client, message):
         TASKS[uid].cancel()
         TASKS.pop(uid, None)
 
-    ani_task = bot_loop.create_task(get_animes(taskInfo.title, taskInfo.link, True))
-    TASKS[uid] = ani_task
+    task = bot_loop.create_task(get_animes(taskInfo.title, taskInfo.link, True))
+    TASKS[uid] = task
 
     await sendMessage(message, f"<i><b>Task Added Successfully!</b></i>\n\n    • <b>Task Name :</b> {taskInfo.title}\n    • <b>Task Link :</b> {args[1]}")
 
