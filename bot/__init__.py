@@ -10,21 +10,16 @@ from dotenv import load_dotenv
 from uvloop import install
 
 install()
+basicConfig(format="[%(asctime)s] [%(name)s | %(levelname)s] - %(message)s [%(filename)s:%(lineno)d]",
+            datefmt="%m/%d/%Y, %H:%M:%S %p",
+            handlers=[FileHandler('log.txt'), StreamHandler()],
+            level=INFO)
 
-# Logging
-basicConfig(
-    format="[%(asctime)s] [%(name)s | %(levelname)s] - %(message)s [%(filename)s:%(lineno)d]",
-    datefmt="%m/%d/%Y, %H:%M:%S %p",
-    handlers=[FileHandler('log.txt'), StreamHandler()],
-    level=INFO
-)
 getLogger("pyrogram").setLevel(ERROR)
 LOGS = getLogger(__name__)
 
-# Load env
 load_dotenv('config.env')
 
-# Shared memory cache
 ani_cache = {
     'fetch_animes': True,
     'ongoing': set(),
@@ -32,25 +27,12 @@ ani_cache = {
 }
 ffpids_cache = list()
 
-# Encoding controls
 ffLock = Lock()
 ffQueue = Queue()
 ff_queued = dict()
 
-# 🆕 Cancel Events for each user task
-class CancelDict(dict):
-    def __missing__(self, key):
-        return None
-
-# Global Cancel Registry
-Var = None  # Define here, update later
-
-
 class Var:
-    # Required
-    API_ID = getenv("API_ID")
-    API_HASH = getenv("API_HASH")
-    BOT_TOKEN = getenv("BOT_TOKEN")
+    API_ID, API_HASH, BOT_TOKEN = getenv("API_ID"), getenv("API_HASH"), getenv("BOT_TOKEN")
     MONGO_URI = getenv("MONGO_URI")
 
     if not BOT_TOKEN or not API_HASH or not API_ID or not MONGO_URI:
@@ -67,8 +49,6 @@ class Var:
 
     SEND_SCHEDULE = getenv("SEND_SCHEDULE", "False").lower() == "true"
     BRAND_UNAME = getenv("BRAND_UNAME", "@username")
-
-    # FFmpeg Commands
     FFCODE_1080 = getenv("FFCODE_1080") or """ffmpeg -i '{}' -progress '{}' -preset veryfast -c:v libx264 -s 1920x1080 -pix_fmt yuv420p -crf 30 -c:a libopus -b:a 32k -c:s copy -map 0 -ac 2 -ab 32k -vbr 2 -level 3.1 '{}' -y"""
     FFCODE_720 = getenv("FFCODE_720") or """ffmpeg -i '{}' -progress '{}' -preset superfast -c:v libx264 -s 1280x720 -pix_fmt yuv420p -crf 30 -c:a libopus -b:a 32k -c:s copy -map 0 -ac 2 -ab 32k -vbr 2 -level 3.1 '{}' -y"""
     FFCODE_480 = getenv("FFCODE_480") or """ffmpeg -i '{}' -progress '{}' -preset superfast -c:v libx264 -s 854x480 -pix_fmt yuv420p -crf 30 -c:a libopus -b:a 32k -c:s copy -map 0 -ac 2 -ab 32k -vbr 2 -level 3.1 '{}' -y"""
@@ -79,36 +59,24 @@ class Var:
     THUMB = getenv("THUMB", "https://te.legra.ph/file/621c8d40f9788a1db7753.jpg")
     AUTO_DEL = getenv("AUTO_DEL", "True").lower() == "true"
     DEL_TIMER = int(getenv("DEL_TIMER", "600"))
-
     START_PHOTO = getenv("START_PHOTO", "https://te.legra.ph/file/120de4dbad87fb20ab862.jpg")
     START_MSG = getenv("START_MSG", "<b>Hey {first_name}</b>,\n\n    <i>I am Auto Animes Store & Automater Encoder Build with ❤️ !!</i>")
     START_BUTTONS = getenv("START_BUTTONS", "UPDATES|https://telegram.me/Matiz_Tech SUPPORT|https://t.me/+p78fp4UzfNwzYzQ5")
 
-    # 🆕 Added Cancel Events Dictionary
-    CANCEL_EVENTS = CancelDict()
-
-
-# Setup folders
 if Var.THUMB and not ospath.exists("thumb.jpg"):
     system(f"wget -q {Var.THUMB} -O thumb.jpg")
     LOGS.info("Thumbnail has been Saved!!")
+if not ospath.isdir("encode/"):
+    mkdir("encode/")
+if not ospath.isdir("thumbs/"):
+    mkdir("thumbs/")
+if not ospath.isdir("downloads/"):
+    mkdir("downloads/")
 
-for folder in ("encode/", "thumbs/", "downloads/"):
-    if not ospath.isdir(folder):
-        mkdir(folder)
-
-# Pyrogram Client
 try:
-    bot = Client(
-        name="AutoAniAdvance",
-        api_id=Var.API_ID,
-        api_hash=Var.API_HASH,
-        bot_token=Var.BOT_TOKEN,
-        plugins=dict(root="bot/modules"),
-        parse_mode=ParseMode.HTML
-    )
+    bot = Client(name="AutoAniAdvance", api_id=Var.API_ID, api_hash=Var.API_HASH, bot_token=Var.BOT_TOKEN, plugins=dict(root="bot/modules"), parse_mode=ParseMode.HTML)
     bot_loop = bot.loop
     sch = AsyncIOScheduler(timezone="Asia/Kolkata", event_loop=bot_loop)
-except Exception as e:
-    LOGS.error(str(e))
+except Exception as ee:
+    LOGS.error(str(ee))
     exit(1)
