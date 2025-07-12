@@ -23,6 +23,8 @@ from pyrogram.errors import MessageNotModified, FloodWait, UserNotParticipant, R
 from bot import bot, bot_loop, LOGS, Var
 from .reporter import rep
 
+TASKS = {}
+
 def handle_logs(func):
     @wraps(func)
     async def wrapper(*args, **kwargs):
