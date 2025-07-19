@@ -1,3 +1,5 @@
+lxml_html_clean
+lxml[html_clean]
 aiohttp
 aioshutil
 aiofiles
